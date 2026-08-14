@@ -157,8 +157,9 @@ export function CordisPanel({
     loaded,
   ) === 'running').length
 
-  if (all.length === 0) return null
-
+  // The badge stays visible with an empty inventory: definitions are process
+  // memory only, so a fresh page or a server restart starts with nothing — the
+  // entry point must not depend on what the current process happens to hold.
   const runAction = async (pluginId: CordisDynamicPluginId, action: () => Promise<void | { ok: boolean; message?: string }>) => {
     if (pending.has(pluginId)) return
     setPending(currentPending => new Set(currentPending).add(pluginId))
