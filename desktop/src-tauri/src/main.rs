@@ -88,31 +88,36 @@ fn stop_server(state: &ServerState) {
         return
     }
     terminate(state, false);
-    let (exited, pid) = (state.exited.clone(), state.pid);
-    thread::spawn(move || {
-        thread::sleep(Duration::from_millis(FORCE_KILL_DELAY_MS));
-        if !exited.load(Ordering::SeqCst) {
-            unsafe {
-                libc::kill(pid as libc::pid_t, libc::SIGKILL);
+    #[cfg(unix)]
+    {
+        let (exited, pid) = (state.exited.clone(), state.pid);
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(FORCE_KILL_DELAY_MS));
+            if !exited.load(Ordering::SeqCst) {
+                unsafe {
+                    libc::kill(pid as libc::pid_t, libc::SIGKILL);
+                }
             }
-        }
-    });
+        });
+    }
 }
 
 /// Terminate the child: SIGTERM on unix (the graceful path), `Child::kill` on
 /// Windows, where no signal mechanism exists and termination is immediate.
+#[cfg(unix)]
 fn terminate(state: &ServerState, force: bool) {
-    if cfg!(windows) {
-        if let Ok(mut guard) = state.child.lock() {
-            if let Some(child) = guard.as_mut() {
-                let _ = child.kill();
-            }
-        }
-        return
-    }
     let signal = if force { libc::SIGKILL } else { libc::SIGTERM };
     unsafe {
         libc::kill(state.pid as libc::pid_t, signal);
+    }
+}
+
+#[cfg(windows)]
+fn terminate(state: &ServerState, _force: bool) {
+    if let Ok(mut guard) = state.child.lock() {
+        if let Some(child) = guard.as_mut() {
+            let _ = child.kill();
+        }
     }
 }
 
