@@ -48,12 +48,15 @@ jobs:
           - platform: linux
             os: ubuntu-24.04
             package: desktop:package:linux
+            verbose: -- --verbose
           - platform: windows
             os: windows-latest
             package: desktop:package:win
+            verbose: ''
           - platform: macos
             os: macos-latest
             package: desktop:package:mac
+            verbose: ''
     steps:
       - uses: actions/checkout@v6
         with:
@@ -130,7 +133,7 @@ jobs:
             desktop-target-${{ matrix.platform }}-
 
       - name: Package desktop installers
-        run: pnpm --filter @deepseek-ai/dsh-desktop run ${{ matrix.package }}
+        run: pnpm --filter @deepseek-ai/dsh-desktop run ${{ matrix.package }} ${{ matrix.verbose }}
 
       - uses: actions/upload-artifact@v4
         with:
