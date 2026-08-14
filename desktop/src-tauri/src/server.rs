@@ -38,6 +38,9 @@ const DEV_RUNTIME_DIR: &str = "build/dsh-runtime";
 pub const PACKAGED_RUNTIME_DIR: &str = "dsh-runtime";
 
 /// The bundled Node binary name inside the bundle resources.
+#[cfg(windows)]
+pub const PACKAGED_NODE_BIN: &str = "node.exe";
+#[cfg(not(windows))]
 pub const PACKAGED_NODE_BIN: &str = "node";
 
 /// Resolve the root of the assembled dsh runtime: `Resources/dsh-runtime` in a
