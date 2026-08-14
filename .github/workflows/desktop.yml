@@ -48,15 +48,12 @@ jobs:
           - platform: linux
             os: ubuntu-24.04
             bundles: appimage
-            verbose: --verbose
           - platform: windows
             os: windows-latest
             bundles: nsis
-            verbose: ''
           - platform: macos
             os: macos-latest
             bundles: app,dmg
-            verbose: ''
     steps:
       - uses: actions/checkout@v6
         with:
@@ -133,14 +130,12 @@ jobs:
             desktop-target-${{ matrix.platform }}-
 
       # Assemble the runtime closure, icons, and bundled Node binary, then run
-      # the Tauri release build directly so extra CLI flags (--verbose for the
-      # Linux leg, which surfaces linuxdeploy errors) reach the tauri CLI
-      # instead of being appended after the pnpm `--` separator.
+      # the Tauri release build directly with the platform's bundle targets.
       - name: Assemble desktop runtime
         run: pnpm --filter @deepseek-ai/dsh-desktop run desktop:build
 
       - name: Package desktop installers
-        run: pnpm -C desktop exec tauri build --bundles ${{ matrix.bundles }} ${{ matrix.verbose }}
+        run: pnpm -C desktop exec tauri build --bundles ${{ matrix.bundles }}
 
       - uses: actions/upload-artifact@v4
         with:

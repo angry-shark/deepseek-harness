@@ -108,6 +108,16 @@ function copyInto(sourceReal, destination) {
       }
     }
   }
+  // koffi ships a glibc and a musl build per Linux target; keep only the
+  // glibc one so the AppImage bundler does not try to deploy musl ELF
+  // dependencies (libc.musl-x86_64.so.1) on the glibc build host.
+  if (process.platform === 'linux' && basename(sourceReal).startsWith('koffi-linux-')) {
+    for (const entry of readdirSync(destination)) {
+      if (entry.startsWith('musl_')) {
+        rmSync(join(destination, entry), { recursive: true, force: true })
+      }
+    }
+  }
 }
 
 /** Decide where one dependency lands in the runtime and copy it there. */
