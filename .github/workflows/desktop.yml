@@ -2,14 +2,26 @@
 # Each platform assembles its own runtime closure from that host's installed
 # node_modules (native modules like koffi and node-pty are platform binaries),
 # so packaging fans out over an OS matrix and every leg runs
-# `desktop:package:<platform>`. Pushed to on dev so a merge to the dev branch
-# produces downloadable installers; `workflow_dispatch` rebuilds any head.
+# `desktop:package:<platform>`. A push to dev builds the installers and
+# attaches them to a rolling `desktop-v<version>` GitHub Release (the version
+# comes from desktop/package.json); `workflow_dispatch` rebuilds any head and,
+# with publish=true, publishes under an explicit tag.
 name: Desktop
 
 on:
   push:
     branches: [dev]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Attach the installers to a GitHub Release.
+        required: true
+        type: boolean
+        default: false
+      release_tag:
+        description: Tag to publish under when dispatching manually (defaults to desktop-v<version>).
+        required: false
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -69,7 +81,9 @@ jobs:
 
       # Tauri v2 Linux prerequisites; `--bundles appimage` runs linuxdeploy as
       # an AppImage, so unprivileged extraction needs libfuse2t64 (fuse3 in
-      # 24.04 images) rather than the classic libfuse2 package.
+      # 24.04 images) rather than the classic libfuse2 package. linuxdeploy
+      # itself requires patchelf and its gtk plugin requires desktop-file-utils
+      # and libgtk-3-bin (gtk-update-icon-cache).
       - name: Install Linux system dependencies
         if: matrix.platform == 'linux'
         run: |
@@ -82,7 +96,10 @@ jobs:
             libssl-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev \
-            libfuse2t64
+            libfuse2t64 \
+            patchelf \
+            desktop-file-utils \
+            libgtk-3-bin
           echo "APPIMAGE_EXTRACT_AND_RUN=1" >> "$GITHUB_ENV"
 
       - name: Install (immutable)
@@ -121,3 +138,43 @@ jobs:
           path: desktop/src-tauri/target/release/bundle/**
           if-no-files-found: error
           retention-days: 14
+
+  publish:
+    name: Publish installers to GitHub Release
+    if: github.ref == 'refs/heads/dev' || inputs.publish
+    needs: package
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Resolve release tag
+        id: tag
+        run: |
+          if [[ -n "${{ inputs.release_tag }}" ]]; then
+            echo "name=${{ inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            version=$(node -p "require('./desktop/package.json').version")
+            echo "name=desktop-v$version" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dsh-desktop-*
+          path: installers
+
+      - name: Attach installers to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          target_commitish: ${{ github.ref }}
+          overwrite: true
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          files: |
+            installers/dsh-desktop-linux/bundle/**/*.AppImage
+            installers/dsh-desktop-windows/bundle/**/*.exe
+            installers/dsh-desktop-macos/bundle/**/*.dmg
