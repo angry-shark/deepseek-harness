@@ -7,6 +7,8 @@ packages:
   - native/landlock-run/packages/*
   # Product assemblies over the package tier; apps/cli owns the `dsh` bin.
   - apps/*
+  # The Electron desktop shell: a private app that is never published to npm.
+  - desktop
   - website
   # The runnable demo leaves join as ONE workspace member: examples/package.json
   # declares the union of every leaf's cordis.yml plugins as workspace:*, so a
@@ -40,6 +42,9 @@ peerDependencyRules:
 allowBuilds:
   esbuild: true
   lefthook: true
+  # The desktop shell's Electron devDependency downloads its platform binary
+  # in a postinstall step.
+  electron: true
   # Cross-platform boundary for the persistent PTY backend, including ConPTY on Windows.
   node-pty: true
   # Pulled in by @earendil-works/pi-ai (optional LLM API backend). pnpm lists
@@ -53,6 +58,20 @@ allowBuilds:
   # The Python runtime deploy includes the reviewed workspace postinstall that
   # restores the executable bit on node-pty's macOS spawn helper.
   '@deepseek-ai/dsh-subprocess-local@file:packages/subprocess/subprocess-local': true
+  # Explicitly denied lifecycle scripts: native optional speedups with JS
+  # fallbacks (bufferutil, utf-8-validate, @parcel/watcher), no-op or
+  # runtime-self-managed downloads (core-js, msw, canvas, edgedriver,
+  # geckodriver, electron-winstaller). Denying reproduces the ignored state
+  # that strictDepBuilds would otherwise reject with a placeholder write.
+  '@parcel/watcher': false
+  bufferutil: false
+  canvas: false
+  core-js: false
+  edgedriver: false
+  electron-winstaller: false
+  geckodriver: false
+  msw: false
+  utf-8-validate: false
 
 minimumReleaseAgeExclude:
   # Fresh pi-ai releases carry the model catalog updates that are the whole

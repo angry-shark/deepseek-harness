@@ -19,6 +19,7 @@ const workspaceGlobs = [
   { dir: 'native', depth: 1 },
   { dir: 'native/landlock-run/packages', depth: 1 },
   { dir: 'apps', depth: 1 },
+  { dir: 'desktop', depth: 1 },
 ] as const
 const vendoredPackages = new Set([
   '@deepseek-ai/cordis',

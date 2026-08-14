@@ -1,0 +1,23 @@
+{
+  "name": "@deepseek-ai/dsh-desktop",
+  "description": "Tauri desktop shell for the DeepSeek Harness Web GUI: spawns the dsh web server with a bundled Node runtime and hosts it in a system-WebView window",
+  "version": "0.1.0-rc.5",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "author": "DeepSeek AI",
+  "scripts": {
+    "desktop:icon": "node scripts/make-icon.mjs",
+    "desktop:runtime": "node scripts/assemble-runtime.mjs",
+    "desktop:node": "node scripts/fetch-node.mjs",
+    "desktop:build": "pnpm run desktop:icon && pnpm run desktop:runtime && pnpm run desktop:node",
+    "desktop:dev": "pnpm run desktop:build && tauri dev",
+    "desktop:package": "pnpm run desktop:build && tauri build",
+    "desktop:package:mac": "pnpm run desktop:build && tauri build --bundles app,dmg",
+    "desktop:package:win": "pnpm run desktop:build && tauri build --bundles nsis",
+    "desktop:package:linux": "pnpm run desktop:build && tauri build --bundles appimage"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.0"
+  }
+}
