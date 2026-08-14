@@ -1,0 +1,123 @@
+# Build the Tauri desktop shell installers for the three desktop platforms.
+# Each platform assembles its own runtime closure from that host's installed
+# node_modules (native modules like koffi and node-pty are platform binaries),
+# so packaging fans out over an OS matrix and every leg runs
+# `desktop:package:<platform>`. Pushed to on dev so a merge to the dev branch
+# produces downloadable installers; `workflow_dispatch` rebuilds any head.
+name: Desktop
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PRIMARY_NODE_VERSION: '24'
+  # CI runs must never report to the production telemetry endpoint baked
+  # into apps/cli/cordis.yml (AppCLIEntry disables the row when set).
+  DSH_TELEMETRY_DISABLED: '1'
+
+jobs:
+  package:
+    name: desktop (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            os: ubuntu-24.04
+            package: desktop:package:linux
+          - platform: windows
+            os: windows-latest
+            package: desktop:package:win
+          - platform: macos
+            os: macos-latest
+            package: desktop:package:mac
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      # Workspace installs on Windows create symlinks (Developer Mode); the
+      # runtime closure assembly also dereferences every link: override.
+      - name: Enable Developer Mode (symlink support)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: >-
+          reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
+          /t REG_DWORD /f /v "AllowDevelopmentWithoutDevLicense" /d "1"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Tauri v2 Linux prerequisites; `--bundles appimage` runs linuxdeploy as
+      # an AppImage, so unprivileged extraction needs libfuse2t64 (fuse3 in
+      # 24.04 images) rather than the classic libfuse2 package.
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl wget file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libfuse2t64
+          echo "APPIMAGE_EXTRACT_AND_RUN=1" >> "$GITHUB_ENV"
+
+      - name: Install (immutable)
+        run: pnpm install --frozen-lockfile
+
+      # assemble-runtime.mjs requires the built dsh lib and the web frontend
+      # dist (`apps/cli/lib/bin.js`, `@deepseek-ai/dsh-web-frontend/dist`), so
+      # the full workspace build runs before the desktop closure assembly.
+      - name: Build workspace
+        run: pnpm run build
+
+      # The bundled Node binary (~114 MB) is redownloaded and checksum-verified
+      # on every leg; cache it keyed on its pinned version and the fetcher.
+      - uses: actions/cache@v4
+        with:
+          path: desktop/build/node
+          key: desktop-node-${{ matrix.platform }}-${{ hashFiles('desktop/scripts/fetch-node.mjs') }}
+          restore-keys: |
+            desktop-node-${{ matrix.platform }}-
+
+      # The Tauri release build is the slowest step; keep the cargo target
+      # across reruns of the same lockfile.
+      - uses: actions/cache@v4
+        with:
+          path: desktop/src-tauri/target
+          key: desktop-target-${{ matrix.platform }}-${{ hashFiles('desktop/src-tauri/Cargo.lock') }}
+          restore-keys: |
+            desktop-target-${{ matrix.platform }}-
+
+      - name: Package desktop installers
+        run: pnpm --filter @deepseek-ai/dsh-desktop run ${{ matrix.package }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dsh-desktop-${{ matrix.platform }}
+          path: desktop/src-tauri/target/release/bundle/**
+          if-no-files-found: error
+          retention-days: 14
