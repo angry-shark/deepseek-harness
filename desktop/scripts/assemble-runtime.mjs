@@ -146,8 +146,12 @@ function assembleClosure() {
           // Optional deps are platform-cropped by the package manager: the
           // manifest names every platform's native build, but only the current
           // one is installed. Missing optionals are fine; a missing required or
-          // peer dependency is a broken closure.
-          if (section === 'optionalDependencies') continue
+          // peer dependency is a broken closure. An optional peer (declared in
+          // peerDependenciesMeta) is likewise skipped: the consumer is free to
+          // use the required default provider instead.
+          const optionalPeer = section === 'peerDependencies'
+            && manifest.peerDependenciesMeta?.[name]?.optional === true
+          if (section === 'optionalDependencies' || optionalPeer) continue
           throw new Error(`assemble-runtime: cannot resolve ${name} from ${sourceDir}`)
         }
         place(name, real, requirerName)
