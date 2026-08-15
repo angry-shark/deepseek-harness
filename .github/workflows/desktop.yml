@@ -139,6 +139,7 @@ jobs:
       # and the failure would otherwise ship in the installer. Fail the leg
       # instead of packaging a broken runtime.
       - name: Verify assembled runtime completeness
+        shell: bash
         run: |
           missing=0
           for d in desktop/build/dsh-runtime/dsh/node_modules/@deepseek-ai/dsh-client-*; do
