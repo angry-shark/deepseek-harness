@@ -1,0 +1,4 @@
+{
+  "name": "hello",
+  "purpose": "A first plugin: a Host handler and a Client settings row, authored in TypeScript."
+}

@@ -12,7 +12,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type {
-  ApprovalRequestId, CordisDynamicPluginId, DynamicCordisInvokeResult, JsonValue,
+  ApprovalRequestId, CordisDynamicPluginId, CordisDynamicPluginRunId, DynamicCordisInvokeResult, JsonValue,
   DynamicCordisInventoryRow,
 } from '@deepseek-ai/dsh-api-remotes/client'
 import type { ClientModuleSystem } from '@deepseek-ai/dsh-client-modules/client'
@@ -27,7 +27,9 @@ import { ClientCordisInspectRegistry, provideClientCordisInspect } from './inspe
 import { clientInspectProviders } from './providers.ts'
 import { provideClientTimer } from './timer.ts'
 import type { CordisRunActivity, CordisRunFailure, CordisUserRunRequest } from './orchestrator.ts'
-import type { CordisObservable, DynamicCordisRenderFailure } from './runtime.ts'
+import type {
+  CordisObservable, DynamicCordisClientHalf, DynamicCordisLoadResult, DynamicCordisRenderFailure,
+} from './runtime.ts'
 
 export { CordisRunOrchestrator } from './orchestrator.ts'
 export { ClientCordisInspectRegistry } from './inspect-registry.ts'
@@ -102,6 +104,21 @@ export interface CordisRunnerFace {
    * @returns after the orchestration settled.
    */
   startUserRun(request: CordisUserRunRequest): Promise<void>
+  /**
+   * Load one standalone Client half onto this page without run orchestration —
+   * the plugin market's install-time consent replaces the approval flow. The
+   * half's agent id is carried for attribution only; render/guard reports for a
+   * half no session owns are ignored by the host.
+   * @param half - source for one mounted Host activation.
+   * @returns the page-local load outcome.
+   */
+  loadStandalone(half: DynamicCordisClientHalf): Promise<DynamicCordisLoadResult>
+  /**
+   * Unload one standalone Client half (a market uninstall or replacement).
+   * @param pluginId - stable Plugin identity.
+   * @param pluginRunId - exact activation being retracted; a newer run survives.
+   */
+  retractStandalone(pluginId: CordisDynamicPluginId, pluginRunId: CordisDynamicPluginRunId): void
   /**
    * Observe what this page has loaded.
    * @param fn - notified after every converged load or unload.
@@ -283,6 +300,8 @@ export function apply(ctx: Context): void {
     approve: (requestId, approveFutureVersions) => orchestrator.approve(requestId, approveFutureVersions),
     decline: requestId => orchestrator.decline(requestId),
     startUserRun: request => orchestrator.startUserRun(request),
+    loadStandalone: half => runner.load(half),
+    retractStandalone: (pluginId, pluginRunId) => { runner.retract(pluginId, pluginRunId) },
     subscribe: fn => runner.subscribe(fn),
     getSnapshot: () => runner.getSnapshot(),
     isLoaded: id => runner.isLoaded(id),

@@ -94,6 +94,13 @@
     - id: plugin-inventory
       name: '@deepseek-ai/dsh-host-plugin-inventory'
 
+    # Persistent plugin market: the user plugin store under the Harness home,
+    # the built-in catalog, and the install/uninstall/status Remotes.
+    - id: plugin-market
+      name: '@deepseek-ai/dsh-host-plugin-market'
+      config:
+        root: !!js dshHomePath('plugins')
+
     # The API gateway: the transport-agnostic dispatch face every client shape
     # shares. The base layer's agent-default-model service owns the default model.
     - id: api-gateway
@@ -194,6 +201,11 @@
 
     - id: ui-settings-plugin-inventory
       name: '@deepseek-ai/dsh-client-ui-settings-plugin-inventory'
+
+    # Plugin market: the sidebar-foot entry and panel for browsing, installing,
+    # and uninstalling persistent plugins, plus the installed Client-half loader.
+    - id: ui-market
+      name: '@deepseek-ai/dsh-client-ui-market'
 
     - id: ui-conversation
       name: '@deepseek-ai/dsh-client-ui-conversation'
