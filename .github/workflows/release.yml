@@ -10,7 +10,9 @@ name: Release (dsh)
 on:
   pull_request:
   push:
-    branches: [master]
+    # `dev-tui` also publishes: its pushes publish whatever versions the
+    # registry lacks, bypassing the tag gate through RELEASE_ALLOW_BRANCH_PUBLISH.
+    branches: [master, dev-tui]
   workflow_dispatch:
     inputs:
       publish:
@@ -71,7 +73,10 @@ jobs:
 
       - name: Verify release version
         env:
-          RELEASE_PUBLISH: ${{ inputs.publish }}
+          # A manual publish (tag) and every dev-tui push run the publishing
+          # gates; the dev-tui path opts out of the tag check below.
+          RELEASE_PUBLISH: ${{ inputs.publish || (github.event_name == 'push' && github.ref_name == 'dev-tui') }}
+          RELEASE_ALLOW_BRANCH_PUBLISH: ${{ github.event_name == 'push' && github.ref_name == 'dev-tui' && '1' || '' }}
         run: pnpm run release:verify --family dsh
 
       - name: Build
@@ -108,7 +113,7 @@ jobs:
 
   publish:
     name: Publish to npm
-    if: inputs.publish
+    if: inputs.publish || (github.event_name == 'push' && github.ref_name == 'dev-tui')
     needs: pack
     runs-on: ubuntu-24.04
     # Required reviewers and the allowed tags live on the environment; this is

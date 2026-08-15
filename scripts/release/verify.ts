@@ -59,7 +59,12 @@ function main(): void {
   const publishing = process.env.RELEASE_PUBLISH === 'true'
   if (publishing) {
     verifyPublishable(members)
-    verifyTag(family, members, process.env.GITHUB_REF ?? '')
+    // A deployment-owned branch can publish without a dsh-v* tag (e.g. a dev
+    // branch that publishes only registry-missing versions). The opt-in is a
+    // workflow-set environment, never a default; the tag gate stays load-bearing
+    // for every other publish path.
+    const allowBranchPublish = process.env.RELEASE_ALLOW_BRANCH_PUBLISH === '1'
+    if (!allowBranchPublish) verifyTag(family, members, process.env.GITHUB_REF ?? '')
   }
 
   const versions = [...new Set(members.map(member => member.version))]
