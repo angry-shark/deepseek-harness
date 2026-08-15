@@ -111,6 +111,16 @@ jobs:
       - name: Build workspace
         run: pnpm run build
 
+      - name: Inspect client package build outputs (debug)
+        if: matrix.platform == 'linux'
+        run: |
+          echo "=== ui-workspace lib after build ==="
+          ls -la packages/client/ui-workspace/lib/ 2>/dev/null || echo "NO LIB DIR"
+          echo "=== ui-workspace dist after build ==="
+          ls -la packages/client/ui-workspace/dist/ 2>/dev/null || echo "NO DIST DIR"
+          echo "=== dsh-agent lib/index.js (host face, control) ==="
+          ls -la packages/agent/agent/lib/index.js 2>/dev/null || find packages -name "dsh-agent" -maxdepth 3 -type d 2>/dev/null | head -1
+
       # The bundled Node binary (~114 MB) is redownloaded and checksum-verified
       # on every leg; cache it keyed on its pinned version and the fetcher.
       - uses: actions/cache@v4
