@@ -114,12 +114,13 @@ jobs:
       - name: Inspect client package build outputs (debug)
         if: matrix.platform == 'linux'
         run: |
+          echo "=== resolve chain ui-workspace ==="
+          node -e "console.log('web-app:', require('fs').realpathSync('packages/bundle/web-app'))"
+          node -e "console.log('ui-workspace real:', require('fs').realpathSync('packages/bundle/web-app/node_modules/@deepseek-ai/dsh-client-ui-workspace'))"
           echo "=== ui-workspace lib after build ==="
           ls -la packages/client/ui-workspace/lib/ 2>/dev/null || echo "NO LIB DIR"
           echo "=== ui-workspace dist after build ==="
           ls -la packages/client/ui-workspace/dist/ 2>/dev/null || echo "NO DIST DIR"
-          echo "=== dsh-agent lib/index.js (host face, control) ==="
-          ls -la packages/agent/agent/lib/index.js 2>/dev/null || find packages -name "dsh-agent" -maxdepth 3 -type d 2>/dev/null | head -1
 
       # The bundled Node binary (~114 MB) is redownloaded and checksum-verified
       # on every leg; cache it keyed on its pinned version and the fetcher.
@@ -143,6 +144,16 @@ jobs:
       # the Tauri release build directly with the platform's bundle targets.
       - name: Assemble desktop runtime
         run: pnpm --filter @deepseek-ai/dsh-desktop run desktop:build
+
+      - name: Inspect assembled runtime closure (debug)
+        if: matrix.platform == 'linux'
+        run: |
+          echo "=== assembled ui-workspace lib ==="
+          ls -la desktop/build/dsh-runtime/dsh/node_modules/@deepseek-ai/dsh-client-ui-workspace/lib/ 2>/dev/null || echo "MISSING"
+          echo "=== assembled agent lib/index.js ==="
+          ls -la desktop/build/dsh-runtime/dsh/node_modules/@deepseek-ai/dsh-agent/lib/index.js 2>/dev/null || echo "MISSING"
+          echo "=== source ui-workspace lib ==="
+          ls -la packages/client/ui-workspace/lib/index.js 2>/dev/null || echo "MISSING"
 
       - name: Package desktop installers
         run: pnpm -C desktop exec tauri build --bundles ${{ matrix.bundles }}
