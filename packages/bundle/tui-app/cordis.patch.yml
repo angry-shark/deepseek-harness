@@ -1,0 +1,27 @@
+# The dsh-tui-app bundle patch: the interactive terminal front door over
+# dsh-base. It mounts no Host, HTTP server, Web runtime, or browser plugin.
+# The TUI row creates (or, with `--resume <id>`, resumes) its own agent through
+# the core registry, then owns the terminal screen until the user exits.
+
+- id: system-prompt
+  config:
+    persona: >-
+      You are a coding agent powered by the {{model}} model. Your working
+      directory is {{cwd}}.
+
+      Verify your work by running the code or tests. Keep answers brief and
+      factual.
+
+- id: tools
+  config:
+    mode: !!js process.env.DSH_TOOLS_MODE
+
+- insert:
+    # The interactive front door. `sessionId` names the fresh session the
+    # front door creates; `--resume` replaces it with a persisted identity.
+    - id: tui
+      name: '@deepseek-ai/dsh-tui'
+      config:
+        sessionId: main
+        welcome: 'Coding agent ready.'
+        showReasoning: true

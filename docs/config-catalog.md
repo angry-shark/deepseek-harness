@@ -545,7 +545,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/extensions/cordis-host-runner/src/index.ts:88`](../packages/extensions/cordis-host-runner/src/index.ts)
+Source: [`packages/extensions/cordis-host-runner/src/index.ts:91`](../packages/extensions/cordis-host-runner/src/index.ts)
 
 <a id="deepseek-aidsh-credentials-local"></a>
 
@@ -784,6 +784,24 @@ export interface Config {
 ```
 
 Source: [`packages/host/frontend-static/src/index.ts:28`](../packages/host/frontend-static/src/index.ts)
+
+<a id="deepseek-aidsh-host-plugin-market"></a>
+
+## `@deepseek-ai/dsh-host-plugin-market`
+
+```ts config-catalog
+/** Market service configuration. */
+export interface Config {
+  /** Store root; defaults to `$DSH_HOME/plugins`. */
+  root?: string
+  /** Deployment-configured git plugin source URLs (users add more in the UI). */
+  sources?: string[]
+  /** Maximum synchronous Host-half evaluation time in milliseconds. */
+  vmTimeoutMs?: number
+}
+```
+
+Source: [`packages/host/plugin-market/src/index.ts:63`](../packages/host/plugin-market/src/index.ts)
 
 <a id="deepseek-aidsh-host-webserver"></a>
 
@@ -2796,6 +2814,30 @@ export type ToolPresentationMode = 'native' | 'code' | 'both'
 
 Source: [`packages/core/tools/src/index.ts:654`](../packages/core/tools/src/index.ts)
 
+<a id="deepseek-aidsh-tui"></a>
+
+## `@deepseek-ai/dsh-tui`
+
+Requires: `agents` · `agentDefaultModel` · `commands` · `sessions` · `sessionTitle` · `tools` · `userQuestions` · `approval`
+
+```ts config-catalog
+/** Plugin config. */
+export interface Config {
+  /** Exact shared agent/session identity the front door drives. */
+  sessionId: string
+  /** Banner subtitle row shown until the session has a logged title. */
+  welcome: string
+  /** Render reasoning blocks. */
+  showReasoning: boolean
+  /** Apply the built-in ANSI palette; `false` strips all styling. */
+  color: boolean
+  /** Product suffix for the terminal window title. */
+  title: string
+}
+```
+
+Source: [`packages/ui/tui/src/index.ts:49`](../packages/ui/tui/src/index.ts)
+
 <a id="deepseek-aidsh-typert-loader"></a>
 
 ## `@deepseek-ai/dsh-typert-loader`
@@ -3042,6 +3084,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-client-ui-input-trigger` ([`packages/client/ui-input-trigger/src/index.ts`](../packages/client/ui-input-trigger/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-jobs` ([`packages/client/ui-jobs/src/index.ts`](../packages/client/ui-jobs/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-layout` ([`packages/client/ui-layout/src/index.ts`](../packages/client/ui-layout/src/index.ts))
+- `@deepseek-ai/dsh-client-ui-market` ([`packages/client/ui-market/src/index.ts`](../packages/client/ui-market/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-message-feedback` ([`packages/client/ui-message-feedback/src/index.ts`](../packages/client/ui-message-feedback/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-model-selection` ([`packages/client/ui-model-selection/src/index.ts`](../packages/client/ui-model-selection/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-permission-presets` ([`packages/client/ui-permission-presets/src/index.ts`](../packages/client/ui-permission-presets/src/index.ts))
@@ -3146,6 +3189,7 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 - `@deepseek-ai/dsh-session-title-llm` ([`packages/session/session-title-llm/src/index.ts`](../packages/session/session-title-llm/src/index.ts))
 - `@deepseek-ai/dsh-subagent-in-process-driver` ([`packages/subagent/subagent-in-process-driver/src/index.ts`](../packages/subagent/subagent-in-process-driver/src/index.ts))
 - `@deepseek-ai/dsh-timeout` ([`packages/util/timeout/src/index.ts`](../packages/util/timeout/src/index.ts))
+- `@deepseek-ai/dsh-tui-app` ([`packages/bundle/tui-app/src/index.ts`](../packages/bundle/tui-app/src/index.ts))
 - `@deepseek-ai/dsh-typert-generator` ([`packages/typert/generator/src/index.ts`](../packages/typert/generator/src/index.ts))
 - `@deepseek-ai/dsh-typert-protocol` ([`packages/typert/protocol/src/index.ts`](../packages/typert/protocol/src/index.ts))
 - `@deepseek-ai/dsh-typert-registry` ([`packages/typert/registry/src/index.ts`](../packages/typert/registry/src/index.ts))
