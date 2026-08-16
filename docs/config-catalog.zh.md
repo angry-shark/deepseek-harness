@@ -2816,30 +2816,6 @@ export type ToolPresentationMode = 'native' | 'code' | 'both'
 
 来源：[`packages/core/tools/src/index.ts:654`](../packages/core/tools/src/index.ts)
 
-<a id="deepseek-aidsh-tui"></a>
-
-## `@deepseek-ai/dsh-tui`
-
-需要：`agents` · `agentDefaultModel` · `commands` · `sessions` · `sessionTitle` · `tools` · `userQuestions` · `approval`
-
-```ts config-catalog
-/** Plugin config. */
-export interface Config {
-  /** Exact shared agent/session identity the front door drives. */
-  sessionId: string
-  /** Banner subtitle row shown until the session has a logged title. */
-  welcome: string
-  /** Render reasoning blocks. */
-  showReasoning: boolean
-  /** Apply the built-in ANSI palette; `false` strips all styling. */
-  color: boolean
-  /** Product suffix for the terminal window title. */
-  title: string
-}
-```
-
-来源：[`packages/ui/tui/src/index.ts:49`](../packages/ui/tui/src/index.ts)
-
 <a id="deepseek-aidsh-typert-loader"></a>
 
 ## `@deepseek-ai/dsh-typert-loader`
@@ -3190,7 +3166,6 @@ export interface Config {
 - `@deepseek-ai/dsh-session-title-llm`（[`packages/session/session-title-llm/src/index.ts`](../packages/session/session-title-llm/src/index.ts)）
 - `@deepseek-ai/dsh-subagent-in-process-driver`（[`packages/subagent/subagent-in-process-driver/src/index.ts`](../packages/subagent/subagent-in-process-driver/src/index.ts)）
 - `@deepseek-ai/dsh-timeout`（[`packages/util/timeout/src/index.ts`](../packages/util/timeout/src/index.ts)）
-- `@deepseek-ai/dsh-tui-app`（[`packages/bundle/tui-app/src/index.ts`](../packages/bundle/tui-app/src/index.ts)）
 - `@deepseek-ai/dsh-typert-generator`（[`packages/typert/generator/src/index.ts`](../packages/typert/generator/src/index.ts)）
 - `@deepseek-ai/dsh-typert-protocol`（[`packages/typert/protocol/src/index.ts`](../packages/typert/protocol/src/index.ts)）
 - `@deepseek-ai/dsh-typert-registry`（[`packages/typert/registry/src/index.ts`](../packages/typert/registry/src/index.ts)）

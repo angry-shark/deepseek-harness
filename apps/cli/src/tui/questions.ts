@@ -6,7 +6,7 @@
  * Both share one FIFO dialog queue and render as pi-tui overlays. A dialog
  * owns the terminal focus until it settles; the queue is a plugin effect, so
  * unload cancels every pending ask and approval.
- * @module @deepseek-ai/dsh-tui/questions
+ * @module @deepseek-ai/dsh/tui/questions
  */
 
 import { Container, SelectList, Text, type Component, type OverlayHandle, type SelectItem, type TUI } from '@earendil-works/pi-tui'

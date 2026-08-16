@@ -11,7 +11,7 @@ on:
   pull_request:
   push:
     # dev-tui builds the tarballs and attaches them to a GitHub Release
-    # (install via release .tgz URL); it never publishes to npm.
+    # (install the CLI by release .tgz URL); it never publishes to npm.
     branches: [master, dev-tui]
   workflow_dispatch:
     inputs:

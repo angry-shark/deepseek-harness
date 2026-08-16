@@ -10,7 +10,7 @@
  * results through the durable `callId`, and the tool's own
  * `presentCall`/`presentResult` intents drive card titles and bodies when the
  * definition is registered.
- * @module @deepseek-ai/dsh-tui/transcript
+ * @module @deepseek-ai/dsh/tui/transcript
  */
 
 import { Container, Markdown, Text, type Component } from '@earendil-works/pi-tui'
@@ -48,7 +48,7 @@ export function textOfBlocks(blocks: readonly ContentBlock[]): string {
  * @param source - the message source.
  * @returns the header label.
  */
-export function headerForSource(source: MessageSource): string {
+function headerForSource(source: MessageSource): string {
   switch (source.kind) {
     case 'user':
       return 'You'
@@ -64,7 +64,7 @@ export function headerForSource(source: MessageSource): string {
  * @param message - the user message to classify.
  * @returns true when the message carries a tool result.
  */
-export function isToolResultMessage(message: UserMessage): boolean {
+function isToolResultMessage(message: UserMessage): boolean {
   return message.source.kind === 'tool'
 }
 
@@ -98,7 +98,7 @@ export function parseToolArguments(raw: string): unknown {
  * @param value - the value to render.
  * @returns a string representation.
  */
-export function formatGenericInput(value: unknown): string {
+function formatGenericInput(value: unknown): string {
   if (typeof value === 'string') return value
   try {
     return JSON.stringify(value, null, 2)
@@ -188,7 +188,7 @@ export function diffLines(oldText: string | null, newText: string): string[] {
  * @param status - the card's completion state.
  * @returns the one-cell glyph.
  */
-export function toolStatusGlyph(status: 'pending' | 'done' | 'error'): string {
+function toolStatusGlyph(status: 'pending' | 'done' | 'error'): string {
   return status === 'pending' ? '·' : status === 'error' ? '✗' : '✓'
 }
 

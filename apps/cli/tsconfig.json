@@ -30,9 +30,6 @@
       "path": "../../packages/bundle/headless"
     },
     {
-      "path": "../../packages/bundle/tui-app"
-    },
-    {
       "path": "../../packages/bundle/web-app"
     },
     {
@@ -73,6 +70,30 @@
     },
     {
       "path": "../../packages/shell/tool-bash"
+    },
+    {
+      "path": "../../vendor/schemastery"
+    },
+    {
+      "path": "../../packages/core/agent"
+    },
+    {
+      "path": "../../packages/core/agent-default-model"
+    },
+    {
+      "path": "../../packages/llm/llm"
+    },
+    {
+      "path": "../../packages/interaction/commands"
+    },
+    {
+      "path": "../../packages/interaction/user-approval"
+    },
+    {
+      "path": "../../packages/interaction/user-questions"
+    },
+    {
+      "path": "../../packages/session/session-title"
     }
   ]
 }

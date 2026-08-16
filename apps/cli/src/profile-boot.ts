@@ -11,7 +11,7 @@
  * @module @deepseek-ai/dsh/profile-boot
  */
 
-import { writeFileSync } from 'node:fs'
+import { existsSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { FiberState, type Context } from '@deepseek-ai/cordis'
@@ -21,11 +21,13 @@ import {
   boot,
   composeEntries,
   healProfilesModuleFallback,
+  initProfile,
   installFailLoud,
   loadOptionalPatches,
   loadOverlayPatches,
   loadProfile,
   PROFILE_PATCH_FILENAME,
+  resolveProfileDir,
   watchUserPatches,
   type Profile,
 } from '@deepseek-ai/dsh-app-boot'
@@ -91,12 +93,21 @@ export function resolveTelemetryPatch(disabledEnv: string | undefined, hasRow: b
  * boot. The file exists on disk only because the Loader needs a real include
  * root to anchor `baseUrl` at the profile directory (the config dump anchors
  * on the same file, so both compose over the identical base).
+ *
+ * The `tui` profile has no shipped template in `dsh-app-boot` — the npm
+ * published package predates it — so the CLI seeds that profile's manifest
+ * itself when missing, composing the interactive terminal front door over the
+ * base from the app's own `dsh.bundle` patch.
  * @param name - the profile name.
  * @param userLayer - `false` skips parsing `cordis.patch.yml` (the default dump).
  * @returns the loaded profile.
  */
 export function prepareProfile(name: string, userLayer = true): Profile {
   healProfilesModuleFallback(INSTALL_ANCHOR)
+  const dir = resolveProfileDir(name)
+  if (name === 'tui' && !existsSync(join(dir, 'package.json'))) {
+    initProfile(dir, ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh'])
+  }
   const profile = loadProfile(NAME, name, INSTALL_ANCHOR, undefined, { userLayer })
   writeFileSync(join(profile.dir, PROFILE_ROOT_FILENAME), PROFILE_ROOT_CONFIG)
   return profile

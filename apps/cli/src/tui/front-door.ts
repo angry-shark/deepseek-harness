@@ -2,7 +2,7 @@
  * The running TUI front door: owns the pi-tui screen, the transcript, the
  * editor, the status/todo chrome, and the in-process human-interaction
  * providers for one exact agent.
- * @module @deepseek-ai/dsh-tui/front-door
+ * @module @deepseek-ai/dsh/tui/front-door
  */
 
 import {

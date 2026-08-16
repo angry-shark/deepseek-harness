@@ -20,7 +20,7 @@
     # The interactive front door. `sessionId` names the fresh session the
     # front door creates; `--resume` replaces it with a persisted identity.
     - id: tui
-      name: '@deepseek-ai/dsh-tui'
+      name: '@deepseek-ai/dsh/tui'
       config:
         sessionId: main
         welcome: 'Coding agent ready.'

@@ -6,13 +6,13 @@
  * Colors use only the standard 16-color ANSI foregrounds and SGR attributes,
  * which every terminal remaps to its active color scheme, so the interface
  * stays readable on light and dark backgrounds alike.
- * @module @deepseek-ai/dsh-tui/theme
+ * @module @deepseek-ai/dsh/tui/theme
  */
 
 import type { EditorTheme, MarkdownTheme, SelectListTheme } from '@earendil-works/pi-tui'
 
 /** One ANSI SGR attribute or foreground color, applied as a wrapper. */
-export interface PaletteStyle {
+interface PaletteStyle {
   /** The SGR code (30–37 / 90–97 for colors, 1/2/3/4/9 for attributes). */
   code: number
   /** Whether the code opens a color slot (the last color wins when nested). */
@@ -20,7 +20,7 @@ export interface PaletteStyle {
 }
 
 /** The complete color/attribute table; every role the TUI uses is one entry. */
-export const paletteSpec = {
+const paletteSpec = {
   dim: { code: 2, isColor: false },
   bold: { code: 1, isColor: false },
   underline: { code: 4, isColor: false },
@@ -32,9 +32,6 @@ export const paletteSpec = {
   error: { code: 31, isColor: true },
   warning: { code: 33, isColor: true },
 } as const satisfies Record<string, PaletteStyle>
-
-/** Every role name, for `/palette`-style enumeration. */
-export type PaletteRole = keyof typeof paletteSpec
 
 /** The palette instance: one wrapper function per role, attributes and colors separately typed. */
 export interface Palette {

@@ -1,6 +1,6 @@
 /**
  * Pure TUI types shared across the front door and its embedding bundles.
- * @module @deepseek-ai/dsh-tui/types
+ * @module @deepseek-ai/dsh/tui/types
  */
 
 /** The front-door plugin config. */

@@ -14,9 +14,9 @@ import {
   CallId,
 } from '@deepseek-ai/dsh-llm'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
-import { createPalette } from '../src/theme.ts'
-import { TranscriptController, assistantMarkdown, diffLines, displayText, textOfBlocks, toolCardText } from '../src/transcript.ts'
-import type { RowHost } from '../src/transcript.ts'
+import { createPalette } from '../src/tui/theme.ts'
+import { TranscriptController, assistantMarkdown, diffLines, displayText, textOfBlocks, toolCardText } from '../src/tui/transcript.ts'
+import type { RowHost } from '../src/tui/transcript.ts'
 
 /** A fake row host that records added components for rendering. */
 class FakeHost implements RowHost {

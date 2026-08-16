@@ -1,5 +1,5 @@
 /**
- * @deepseek-ai/dsh-tui — the interactive full-screen terminal front door for
+ * @deepseek-ai/dsh/tui — the interactive full-screen terminal front door for
  * DeepSeek Harness agents, built on pi-tui. It renders the durable session
  * transcript, drives one created-or-resumed agent, and presents human
  * questions and approvals as keyboard dialogs.
@@ -9,7 +9,7 @@
  * it renders from `session/event`, and registers the shared interaction
  * providers. It requires both stdin and stdout to be TTYs and fails loud
  * otherwise.
- * @module @deepseek-ai/dsh-tui
+ * @module @deepseek-ai/dsh/tui
  */
 
 import type { Context } from '@deepseek-ai/cordis'

@@ -729,6 +729,7 @@
     },
     "apps/cli": {
       "entry": [
+        "src/tui/index.ts",
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts",
         "tests/**/*.snapshot.ts"
@@ -790,11 +791,6 @@
       ]
     },
     "packages/bundle/web-app": {
-      "ignoreDependencies": [
-        "@deepseek-ai/.+"
-      ]
-    },
-    "packages/bundle/tui-app": {
       "ignoreDependencies": [
         "@deepseek-ai/.+"
       ]

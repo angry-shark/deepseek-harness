@@ -5,8 +5,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { SelectList, type Component } from '@earendil-works/pi-tui'
 import type { TUI } from '@earendil-works/pi-tui'
-import { createPalette } from '../src/theme.ts'
-import { DialogHost, askApproval, askQuestion, questionOptions } from '../src/questions.ts'
+import { createPalette } from '../src/tui/theme.ts'
+import { DialogHost, askApproval, askQuestion, questionOptions } from '../src/tui/questions.ts'
 
 const emptyTheme = {
   selectedPrefix: (text: string) => text,
