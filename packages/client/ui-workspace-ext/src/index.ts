@@ -86,6 +86,74 @@ async function readGitHead(fs: FileSystem, root: string): Promise<string | null>
 /** Run one git command in a repo root, collecting stdout/stderr. */
 type GitRun = { exitCode: number | null; out: string; err: string }
 
+/** One working-tree change row from `git status --porcelain`. */
+export interface GitStatusChange {
+  /** The staged-side status code (index column). */
+  index: string
+  /** The unstaged-side status code (worktree column). */
+  worktree: string
+  /** The changed path, unquoted. */
+  path: string
+}
+
+/** Parsed `git status --porcelain=v1 --branch` output. */
+export interface GitStatus {
+  /** The checked-out branch name, or null on a detached HEAD. */
+  branch: string | null
+  /** Commits ahead of the upstream (0 when none is tracked). */
+  ahead: number
+  /** Commits behind the upstream (0 when none is tracked). */
+  behind: number
+  /** Every non-branch line, in porcelain order. */
+  changes: GitStatusChange[]
+}
+
+/**
+ * Parse `git status --porcelain=v1 --branch` output: the `##` header carries
+ * the branch and ahead/behind counts, every following line is one
+ * two-column status code plus a path. The header's bracket section holds the
+ * upstream delta; the branch slot reads `HEAD (no branch)` (detached) or the
+ * branch name, and an unborn branch reports `No commits yet on <name>`.
+ */
+export function parseGitStatus(out: string): GitStatus {
+  const status: GitStatus = { branch: null, ahead: 0, behind: 0, changes: [] }
+  const lines = out.split('\n')
+  let bodyStart = 0
+  /* v8 ignore next -- split always yields at least one element, so the empty fallback cannot run */
+  const header = lines[0] ?? ''
+  if (header.startsWith('## ')) {
+    bodyStart = 1
+    let rest = header.slice(3)
+    const bracket = / \[(.*)\]$/.exec(rest)
+    let delta = ''
+    if (bracket !== null) {
+      /* v8 ignore next -- the capture group always matched when the regex matched, so the fallback arm cannot run */
+      delta = bracket[1] ?? ''
+      rest = rest.slice(0, -bracket[0].length)
+    }
+    /* v8 ignore next -- split always yields at least one element, so the empty fallback cannot run */
+    const name = rest.split('...')[0] ?? ''
+    const unborn = /^No commits yet on (.+)$/.exec(name)
+    const detached = name === 'HEAD (no branch)'
+    /* v8 ignore next -- the capture group always matched when the regex matched, so the fallback arm cannot run */
+    if (unborn !== null) status.branch = unborn[1] ?? null
+    else if (!detached) status.branch = name === '' ? null : name
+    const aheadMatch = /ahead (\d+)/.exec(delta)
+    const behindMatch = /behind (\d+)/.exec(delta)
+    status.ahead = aheadMatch === null ? 0 : Number(aheadMatch[1])
+    status.behind = behindMatch === null ? 0 : Number(behindMatch[1])
+  }
+  for (const line of lines.slice(bodyStart)) {
+    if (line === '') continue
+    const code = line.slice(0, 2)
+    const path = line.length > 3 ? line.slice(3) : ''
+    if (code === '  ') continue
+    /* v8 ignore next -- a non-empty line always has at least its first character, so both fallback arms cannot run */
+    status.changes.push({ index: code[0] ?? '', worktree: code[1] ?? '', path })
+  }
+  return status
+}
+
 async function runGit(subprocess: SubprocessRuntime, root: string, args: string[]): Promise<GitRun> {
   let git = 'git'
   try {
@@ -193,6 +261,28 @@ export function apply(ctx: Context): void {
       }
     },
   }), 'workspace-ext: checkout route')
+
+  ctx.effect(() => webServer.register({
+    kind: 'exact',
+    path: '/api/workspace-ext/status',
+    handler: async (req, res) => {
+      if (!loopbackHost(req)) { json(res, 403, { ok: false, error: 'forbidden host' }); return }
+      const subprocess = ctx.get('subprocess')
+      /* v8 ignore next -- node:http always sets url on server requests */
+      const url = new URL(req.url ?? '/', 'http://x')
+      const root = url.searchParams.get('path') ?? ''
+      if (subprocess === undefined || root === '') { json(res, 400, { ok: false, error: 'missing path' }); return }
+      try {
+        const r = await runGit(subprocess, root, ['status', '--porcelain=v1', '--branch'])
+        if (r.exitCode !== 0) { json(res, 200, { ok: false, error: (r.err || r.out || `git exited ${r.exitCode}`).trim() }); return }
+        const parsed = parseGitStatus(r.out)
+        json(res, 200, { ok: true, ...parsed })
+      } catch (error) {
+        /* v8 ignore next -- lint-enforced Error-only test rejections leave the String fallback uncovered */
+        json(res, 200, { ok: false, error: error instanceof Error ? error.message : String(error) })
+      }
+    },
+  }), 'workspace-ext: status route')
 
   ctx.effect(() => webServer.register({
     kind: 'exact',

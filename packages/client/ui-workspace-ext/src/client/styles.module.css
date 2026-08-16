@@ -1,5 +1,6 @@
 /* Workspace enhancements: git branch chip + anchored switcher menu, and the
- * right-side collapsible terminal sidebar. Tokens are the shared --dsw-* aliases. */
+ * right-side collapsible tabbed panel (terminal + Git workspace). Tokens are
+ * the shared --dsw-* aliases. */
 
 .gitWrap {
   position: relative;
@@ -103,88 +104,114 @@
   color: var(--dsw-alias-state-error-primary);
 }
 
-.termRail {
+/* Shared rail/panel geometry: fixed full-height column on the right edge.
+   The width transition animates collapse and expand; the rail label swaps in
+   once the panel content unmounts at settle. */
+.rightRail,
+.rightPanel,
+.rightPanelCollapsing {
   position: fixed;
   top: 0;
   right: 0;
   bottom: 0;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  border-left: 1px solid var(--dsw-alias-border-l2);
+  pointer-events: auto;
+  z-index: 40;
+}
+
+.rightRail {
   width: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-primary);
-  border-left: 1px solid var(--dsw-alias-border-l2);
   cursor: pointer;
   user-select: none;
   font-size: 12px;
   letter-spacing: 3px;
-  pointer-events: auto;
-  z-index: 40;
   writing-mode: vertical-rl;
 }
 
-.termRail:hover {
+.rightRail:hover {
   color: var(--dsw-alias-brand-primary);
 }
 
-.termPanel {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
+.rightPanel {
   width: 360px;
   max-width: 90vw;
   display: flex;
   flex-direction: column;
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-primary);
-  border-left: 1px solid var(--dsw-alias-border-l2);
   box-shadow: -8px 0 32px rgba(0, 0, 0, 0.18);
-  pointer-events: auto;
-  z-index: 40;
+  transition: width 180ms ease;
 }
 
-.termHead {
+.rightPanelCollapsing {
+  width: 40px;
+  overflow: hidden;
+  transition: width 180ms ease;
+}
+
+.panelContent {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  opacity: 1;
+  transition: opacity 120ms ease;
+}
+
+.rightPanelCollapsing .panelContent {
+  opacity: 0;
+}
+
+.panelHead {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
+  gap: 6px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--dsw-alias-border-l1);
+  flex: none;
 }
 
-.termTitle {
-  font-weight: 600;
-  font-size: 13px;
+.panelTab {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.panelTab:hover {
   color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
 }
 
-.termCwd {
+.panelTabOn {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+  font-weight: 600;
+}
+
+.panelCwd {
   flex: 1;
   font-size: 11px;
   color: var(--dsw-alias-label-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: right;
 }
 
-.termBtn {
-  font-size: 12px;
-  padding: 2px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  background: var(--dsw-alias-bg-base);
-  color: var(--dsw-alias-label-primary);
-  cursor: pointer;
-}
-
-.termBtn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.termBtn:hover:not(:disabled) {
-  border-color: var(--dsw-alias-border-l2);
+.termBody,
+.gitBody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .termOut {
@@ -207,13 +234,15 @@
   padding: 4px 14px;
   color: var(--dsw-alias-state-error-primary);
   font-size: 12px;
+  flex: none;
 }
 
 .termInput {
   display: flex;
   gap: 8px;
-  padding: 10px 14px;
+  padding: 8px 10px;
   border-top: 1px solid var(--dsw-alias-border-l1);
+  flex: none;
 }
 
 .termInput input {
@@ -229,4 +258,132 @@
 .termInput input:focus {
   outline: none;
   border-color: var(--dsw-alias-border-l2);
+}
+
+.termBtn {
+  font-size: 12px;
+  padding: 2px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.termBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.termBtn:hover:not(:disabled) {
+  border-color: var(--dsw-alias-border-l2);
+}
+
+.termActions {
+  display: flex;
+  gap: 6px;
+  padding: 0 10px 10px;
+  flex: none;
+}
+
+.termActions .termBtn:first-child {
+  margin-left: auto;
+}
+
+/* Git working-tree tab. */
+.gitSummary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px 4px;
+  flex: none;
+}
+
+.gitBranch {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gitDelta {
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+  flex: none;
+}
+
+.gitStatus {
+  margin: 4px 14px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+  flex: none;
+}
+
+.gitList {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: 0 10px 10px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gitRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: 6px;
+}
+
+.gitRow:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.gitCodes {
+  display: inline-flex;
+  gap: 3px;
+  flex: none;
+  width: 44px;
+}
+
+.gitCode {
+  font-size: 10px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.gitCode[data-kind='M'],
+.gitCode[data-kind='A'],
+.gitCode[data-kind='R'],
+.gitCode[data-kind='C'] {
+  background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 14%, transparent);
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.gitCode[data-kind='D'] {
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 14%, transparent);
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.gitCode[data-kind='U'],
+.gitCode[data-kind='?'] {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.gitPath {
+  font-size: 12px;
+  color: var(--dsw-alias-label-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

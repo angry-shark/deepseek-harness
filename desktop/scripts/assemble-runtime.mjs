@@ -55,14 +55,22 @@ function resolveFrom(packageDir, name) {
  * Provider SDKs that @earendil-works/pi-ai ships as eager dependencies but
  * only ever imports through its lazy ./providers/* subpaths. The Web profile
  * mounts pi-ai dormant (zero routes until a llm-pi-ai settings section
- * configures a provider), so these ~120 MB of SDKs would only be dead weight
- * on every cold start; a user who configures a non-DeepSeek provider gets a
- * clear missing-dependency error instead. The only other closure member
- * referencing any of them (subagent-claude-code) is not part of the dsh
- * production closure.
+ * configures a provider), so excluding the bulky SDKs keeps cold starts
+ * light; a user who configures a provider whose SDK was excluded gets a clear
+ * missing-dependency error instead. The only other closure member referencing
+ * any of them (subagent-claude-code) is not part of the dsh production
+ * closure.
+ *
+ * openai stays in the closure: its SDK is self-contained (zero runtime
+ * dependencies, all helpers vendored) at ~13 MB, and the OpenAI-compatible
+ * completions path is the commonest non-DeepSeek provider route, so a
+ * missing-dependency error there would block the majority of custom setups.
+ * The Mistral, Google GenAI, Bedrock, and Anthropic SDKs remain excluded:
+ * together they add ~50 MB of dead weight on every cold start, and each has a
+ * specific provider section in llm-pi-ai that triggers a targeted error if
+ * configured without its SDK present.
  */
 const EXCLUDED_DEPENDENCIES = [
-  'openai',
   '@mistralai/mistralai',
   '@google/genai',
   '@aws-sdk',

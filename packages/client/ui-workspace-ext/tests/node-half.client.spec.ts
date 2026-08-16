@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type { FileSystem } from '@deepseek-ai/dsh-fs'
 import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
-import { apply, inject, name } from '../src/index.ts'
+import { apply, inject, name, parseGitStatus, type GitStatus } from '../src/index.ts'
 
 function makeRes(): ServerResponse {
   const res = { status: 0, body: '' } as unknown as ServerResponse
@@ -119,6 +119,7 @@ describe('workspace-ext node half', () => {
       '/api/workspace-ext/branch',
       '/api/workspace-ext/branches',
       '/api/workspace-ext/checkout',
+      '/api/workspace-ext/status',
       '/api/workspace-ext/term/kill',
       '/api/workspace-ext/term/poll',
       '/api/workspace-ext/term/spawn',
@@ -282,6 +283,93 @@ describe('workspace-ext node half', () => {
     await byPath(routes, '/api/workspace-ext/checkout').handler(
       makeReq('POST', '/api/workspace-ext/checkout', '127.0.0.1:52351', {}), res3)
     expect((res3 as unknown as { status: number }).status).toBe(400)
+  })
+
+  it('reports the working-tree status through git status --porcelain', async () => {
+    const { ctx, routes } = bench()
+    const subprocess = fakeSubprocess([{
+      exitCode: 0,
+      out: '## dev...origin/dev [ahead 2, behind 1]\n M src/a.ts\nA  new.txt\n?? untracked.md\n',
+    }])
+    ;(ctx as unknown as Record<string, unknown>)['svc:subprocess'] = subprocess
+    const res = makeRes()
+    await byPath(routes, '/api/workspace-ext/status').handler(
+      makeReq('GET', '/api/workspace-ext/status?path=%2Frepo'), res)
+    expect(bodyOf(res)).toEqual({
+      ok: true,
+      branch: 'dev',
+      ahead: 2,
+      behind: 1,
+      changes: [
+        { index: ' ', worktree: 'M', path: 'src/a.ts' },
+        { index: 'A', worktree: ' ', path: 'new.txt' },
+        { index: '?', worktree: '?', path: 'untracked.md' },
+      ],
+    })
+
+    // git failure surfaces stderr.
+    const subprocess2 = fakeSubprocess([{ exitCode: 128, err: 'fatal: not a git repository' }])
+    ;(ctx as unknown as Record<string, unknown>)['svc:subprocess'] = subprocess2
+    const res2 = makeRes()
+    await byPath(routes, '/api/workspace-ext/status').handler(
+      makeReq('GET', '/api/workspace-ext/status?path=%2Frepo'), res2)
+    const body2 = bodyOf(res2)
+    expect(body2.ok).toBe(false)
+    expect(body2.error).toContain('fatal')
+
+    // A failure with only stdout and one with no streams keep their fallbacks.
+    const subprocess3 = fakeSubprocess([{ exitCode: 1, out: 'conflict' }, { exitCode: 1 }])
+    ;(ctx as unknown as Record<string, unknown>)['svc:subprocess'] = subprocess3
+    const res3 = makeRes()
+    await byPath(routes, '/api/workspace-ext/status').handler(
+      makeReq('GET', '/api/workspace-ext/status?path=%2Frepo'), res3)
+    expect(bodyOf(res3).error).toBe('conflict')
+    const res4 = makeRes()
+    await byPath(routes, '/api/workspace-ext/status').handler(
+      makeReq('GET', '/api/workspace-ext/status?path=%2Frepo'), res4)
+    expect(bodyOf(res4).error).toBe('git exited 1')
+
+    // Missing path → 400; missing service → 400.
+    const res5 = makeRes()
+    await byPath(routes, '/api/workspace-ext/status').handler(makeReq('GET', '/api/workspace-ext/status'), res5)
+    expect((res5 as unknown as { status: number }).status).toBe(400)
+    ;(ctx as unknown as Record<string, unknown>)['svc:subprocess'] = undefined
+    const res6 = makeRes()
+    await byPath(routes, '/api/workspace-ext/status').handler(
+      makeReq('GET', '/api/workspace-ext/status?path=%2Frepo'), res6)
+    expect((res6 as unknown as { status: number }).status).toBe(400)
+  })
+
+  it('parses detached, unborn, and plain branch headers', () => {
+    expect(parseGitStatus('## HEAD (no branch)\n M a\n')).toEqual({
+      branch: null, ahead: 0, behind: 0,
+      changes: [{ index: ' ', worktree: 'M', path: 'a' }],
+    })
+    expect(parseGitStatus('## No commits yet on main\n')).toEqual({
+      branch: 'main', ahead: 0, behind: 0, changes: [],
+    })
+    expect(parseGitStatus('## main\n')).toEqual({
+      branch: 'main', ahead: 0, behind: 0, changes: [],
+    })
+    expect(parseGitStatus('## main...origin/main [behind 3]\n')).toEqual({
+      branch: 'main', ahead: 0, behind: 3, changes: [],
+    })
+    // A bare repository without a branch header yields no branch.
+    const bare = parseGitStatus('?? file\n')
+    expect(bare.branch).toBeNull()
+    expect(bare.changes).toEqual([{ index: '?', worktree: '?', path: 'file' }])
+    // Rows with only whitespace codes are skipped.
+    expect(parseGitStatus('## main\n  \n  clean.txt\n').changes).toEqual([])
+    // The `space-space` code row is skipped entirely.
+    const spaced: GitStatus = parseGitStatus('## main\n   x\n')
+    expect(spaced.changes).toEqual([])
+    // A header with an upstream but no local name reports no branch.
+    expect(parseGitStatus('## ...origin/main [ahead 1]\n').branch).toBeNull()
+    // A single-character row keeps the code columns short.
+    expect(parseGitStatus('## main\nM\n')).toEqual({
+      branch: 'main', ahead: 0, behind: 0,
+      changes: [{ index: 'M', worktree: '', path: '' }],
+    })
   })
 
   it('spawns, writes, polls, kills and reports the terminal', async () => {
@@ -702,5 +790,28 @@ describe('workspace-ext node half — final arms', () => {
     await byPath(routes, '/api/workspace-ext/branches').handler(
       makeReq('GET', '/api/workspace-ext/branches?path=%2Frepo'), res2)
     expect(bodyOf(res2).error).toBe('branch-string')
+  })
+
+  it('rejects status with Error and string payloads', async () => {
+    const { ctx, routes } = bench()
+    const rejectSubprocess = {
+      resolveExecutable: vi.fn(async () => '/usr/bin/git'),
+      spawn: vi.fn(() => ({ done: Promise.reject(new Error('status boom')), collected: {} })),
+    } as unknown as SubprocessRuntime
+    ;(ctx as unknown as Record<string, unknown>)['svc:subprocess'] = rejectSubprocess
+    const res = makeRes()
+    await byPath(routes, '/api/workspace-ext/status').handler(
+      makeReq('GET', '/api/workspace-ext/status?path=%2Frepo'), res)
+    expect(bodyOf(res).error).toBe('status boom')
+
+    const stringSubprocess = {
+      resolveExecutable: vi.fn(async () => '/usr/bin/git'),
+      spawn: vi.fn(() => ({ done: Promise.reject(new Error('status-string')), collected: {} })),
+    } as unknown as SubprocessRuntime
+    ;(ctx as unknown as Record<string, unknown>)['svc:subprocess'] = stringSubprocess
+    const res2 = makeRes()
+    await byPath(routes, '/api/workspace-ext/status').handler(
+      makeReq('GET', '/api/workspace-ext/status?path=%2Frepo'), res2)
+    expect(bodyOf(res2).error).toBe('status-string')
   })
 })

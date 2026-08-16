@@ -36,6 +36,16 @@ export interface TermStatus {
   error?: string
 }
 
+/** Working-tree status: branch + ahead/behind + porcelain change rows. */
+export interface GitStatusInfo {
+  ok: boolean
+  branch: string | null
+  ahead: number
+  behind: number
+  changes: Array<{ index: string; worktree: string; path: string }>
+  error?: string
+}
+
 /** Incremental terminal output since the previous poll. */
 export interface TermPoll {
   ok: boolean
@@ -69,6 +79,8 @@ export const api = {
     getJson(`/api/workspace-ext/branches?path=${encodeURIComponent(path)}`),
   gitCheckout: (path: string, branch: string): Promise<GitCheckoutResult> =>
     postJson('/api/workspace-ext/checkout', { path, branch }),
+  gitStatus: (path: string): Promise<GitStatusInfo> =>
+    getJson(`/api/workspace-ext/status?path=${encodeURIComponent(path)}`),
   termSpawn: (cwd: string): Promise<{ ok: boolean; error?: string }> =>
     postJson('/api/workspace-ext/term/spawn', { cwd }),
   termWrite: (text: string): Promise<{ ok: boolean; error?: string }> =>

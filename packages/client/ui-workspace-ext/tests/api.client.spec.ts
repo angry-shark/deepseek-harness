@@ -27,6 +27,8 @@ describe('workspace-ext api client', () => {
     expect(call[1]?.headers).toEqual({ accept: 'application/json' })
     await api.gitBranches('/repo')
     expect(vi.mocked(fetch).mock.calls[1]![0]).toBe('/api/workspace-ext/branches?path=%2Frepo')
+    await api.gitStatus('/repo')
+    expect(vi.mocked(fetch).mock.calls[2]![0]).toBe('/api/workspace-ext/status?path=%2Frepo')
   })
 
   it('sends JSON POST bodies for checkout and terminal commands', async () => {
