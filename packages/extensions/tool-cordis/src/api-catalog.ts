@@ -2398,6 +2398,22 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'options', description: 'the full request. A LOOP-built request carries the process-local {@link markAgentLoopRequest} identity and arrives deep-frozen (mutation throws): its content is a pure function of the session log (the reconstructability Agent Note), so listeners read it, never rewrite it. Hand-built calls do not carry that marker; their messages already obey the immutable creation contract.' }],
   },
   {
+    name: 'market/installed-change',
+    mode: 'emit',
+    signature: '\'market/installed-change\'(payload: { pluginId: string action: \'installed\' | \'uninstalled\' | \'mounted\' | \'failed\' }): void',
+    summary: 'One installed plugin\'s store or mount state changed.',
+    description: 'One installed plugin\'s store or mount state changed.',
+    parameters: [{ name: 'payload', description: 'the affected plugin and the action that moved it.' }],
+  },
+  {
+    name: 'market/sources-change',
+    mode: 'emit',
+    signature: '\'market/sources-change\'(): void',
+    summary: 'The configured git sources changed or were refreshed.',
+    description: 'The configured git sources changed or were refreshed.',
+    parameters: [],
+  },
+  {
     name: 'session-telemetry/record',
     mode: 'waterfall',
     signature: '\'session-telemetry/record\'(record: SessionTelemetryRecord, next: () => SessionTelemetryRecord): SessionTelemetryRecord',

@@ -35,6 +35,13 @@ export const zh = {
   'removeSource': '移除',
   'refreshSources': '刷新源',
   'refreshingSources': '刷新中…',
+  'tabMarket': '市场',
+  'tabCordis': 'Cordis 插件',
+  'cordisLoading': '正在加载 Cordis 插件…',
+  'cordisEmpty': '当前会话还没有动态 Cordis 插件。',
+  'cordisError': '加载 Cordis 插件失败。',
+  'cordisRunning': '运行中',
+  'cordisStopped': '已停止',
 } as const
 
 export const en = {
@@ -72,6 +79,13 @@ export const en = {
   'removeSource': 'Remove',
   'refreshSources': 'Refresh sources',
   'refreshingSources': 'Refreshing…',
+  'tabMarket': 'Market',
+  'tabCordis': 'Cordis Plugins',
+  'cordisLoading': 'Loading Cordis plugins…',
+  'cordisEmpty': 'No dynamic Cordis plugins in this session yet.',
+  'cordisError': 'Failed to load Cordis plugins.',
+  'cordisRunning': 'Running',
+  'cordisStopped': 'Stopped',
 } as const
 
 export type MarketLocaleKey = keyof typeof zh

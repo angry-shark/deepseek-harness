@@ -10,7 +10,6 @@ import type {} from './events.ts'
 import { CordisActionRow } from './CordisActionRow.tsx'
 import { CordisDefineRow } from './CordisDefineRow.tsx'
 import { CordisRunRow } from './CordisRunRow.tsx'
-import { CordisPanel } from './CordisPanel.tsx'
 import { createCordisInventory } from './inventory.ts'
 import { CordisRunCardRegistry } from './run-card-index.ts'
 import type { CordisDynamicPort } from './dynamic-port.ts'
@@ -81,6 +80,8 @@ export function apply(ctx: ClientContext): void {
     inventory.refresh()
   })
 
+  // The Cordis panel merged into the plugin market dialog's Cordis tab
+  // (ui-market): this cell renders nothing so the sidebar keeps one entry.
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action',
     id: 'cordis-panel',
@@ -109,7 +110,7 @@ export function apply(ctx: ClientContext): void {
       },
       onRefresh: () => { inventory.refresh() },
     }),
-  }, CordisPanel))
+  }, () => null))
 
   const cardFace = (): CordisCardFace => ({ hooks: { inventory, loaded } })
   ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({

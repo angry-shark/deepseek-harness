@@ -254,7 +254,7 @@ inspectPackage( agent: Agent, pluginId: CordisDynamicPluginId, packageId: Cordis
 
 Types: [Agent](core.md)
 
-Source: [`packages/extensions/cordis-host-runner/src/index.ts:124`](../../packages/extensions/cordis-host-runner/src/index.ts)
+Source: [`packages/extensions/cordis-host-runner/src/index.ts:127`](../../packages/extensions/cordis-host-runner/src/index.ts)
 
 <a id="cordis-events"></a>
 
@@ -361,4 +361,41 @@ A pending Client activation request left the answerable state.
 ```
 
 Source: [`packages/extensions/cordis-host-runner/src/types.ts:373`](../../packages/extensions/cordis-host-runner/src/types.ts)
+
+<a id="market-events"></a>
+
+### `market/*` events
+
+<a id="marketinstalled-change--emit"></a>
+
+#### `market/installed-change` — emit
+
+One installed plugin's store or mount state changed.
+
+```ts cordis-catalog
+/**
+ * One installed plugin's store or mount state changed.
+ * @mode emit
+ * @param payload - the affected plugin and the action that moved it.
+ */
+'market/installed-change'(payload: { pluginId: string action: 'installed' | 'uninstalled' | 'mounted' | 'failed' }): void
+```
+
+Source: [`packages/host/plugin-market/src/types.ts:11`](../../packages/host/plugin-market/src/types.ts)
+
+<a id="marketsources-change--emit"></a>
+
+#### `market/sources-change` — emit
+
+The configured git sources changed or were refreshed.
+
+```ts cordis-catalog
+/**
+ * The configured git sources changed or were refreshed.
+ * @mode emit
+ */
+'market/sources-change'(): void
+```
+
+Source: [`packages/host/plugin-market/src/types.ts:19`](../../packages/host/plugin-market/src/types.ts)
 <!-- END GENERATED cordis-surface -->

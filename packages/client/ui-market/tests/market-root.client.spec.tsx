@@ -63,6 +63,7 @@ function props(overrides: Partial<MarketRootProps> = {}): MarketRootProps {
     addSource: vi.fn(async () => ({ ok: true })),
     removeSource: vi.fn(async () => ({ ok: true })),
     refreshSources: vi.fn(async () => ({ sources: [] } satisfies MarketSourcesSnapshot)),
+    cordisPlugins: vi.fn(async () => []),
     ...overrides,
   }
 }
@@ -194,5 +195,52 @@ describe('MarketRoot', () => {
     await findByText('https://example.com/plugins.git')
     fireEvent.click(screen.getByRole('button', { name: zh.removeSource }))
     await waitFor(() => { expect(removeSource).toHaveBeenCalledWith('https://example.com/plugins.git') })
+  })
+})
+
+describe('MarketRoot cordis tab', () => {
+  it('switches to the Cordis tab and lists the dynamic plugins', async () => {
+    const { getByRole, findByText } = render(<MarketRoot {...props({
+      cordisPlugins: vi.fn(async () => [
+        { pluginId: 'wrke-1', name: '工作区增强', running: true, currentPackageId: 'pkg-1' },
+        { pluginId: 'other-2', name: 'other-2', running: false },
+      ]),
+    })} />)
+    fireEvent.click(getByRole('button', { name: zh.trigger }))
+    fireEvent.click(await findByText(zh.tabCordis))
+    expect(await findByText('工作区增强')).toBeTruthy()
+    expect(await findByText('wrke-1')).toBeTruthy()
+    expect(await findByText(zh.cordisRunning)).toBeTruthy()
+    expect(await findByText(zh.cordisStopped)).toBeTruthy()
+    // the market catalog stays hidden while the Cordis tab is active
+    expect(screen.queryByText('主机问候')).toBeNull()
+    // switching back restores the catalog
+    fireEvent.click(screen.getByText(zh.tabMarket))
+    expect(await screen.findByText('主机问候')).toBeTruthy()
+  })
+
+  it('renders the Cordis empty state', async () => {
+    const { getByRole, findByText } = render(<MarketRoot {...props()} />)
+    fireEvent.click(getByRole('button', { name: zh.trigger }))
+    fireEvent.click(await findByText(zh.tabCordis))
+    expect(await findByText(zh.cordisEmpty)).toBeTruthy()
+  })
+
+  it('renders the Cordis error state', async () => {
+    const { getByRole, findByText } = render(<MarketRoot {...props({
+      cordisPlugins: vi.fn(async () => { throw new Error('boom') }) as unknown as MarketRootProps['cordisPlugins'],
+    })} />)
+    fireEvent.click(getByRole('button', { name: zh.trigger }))
+    fireEvent.click(await findByText(zh.tabCordis))
+    expect(await findByText(zh.cordisError)).toBeTruthy()
+  })
+
+  it('renders the Cordis loading state while the read is pending', async () => {
+    const { getByRole, findByText } = render(<MarketRoot {...props({
+      cordisPlugins: vi.fn(() => new Promise(() => {})) as unknown as MarketRootProps['cordisPlugins'],
+    })} />)
+    fireEvent.click(getByRole('button', { name: zh.trigger }))
+    fireEvent.click(await findByText(zh.tabCordis))
+    expect(await findByText(zh.cordisLoading)).toBeTruthy()
   })
 })

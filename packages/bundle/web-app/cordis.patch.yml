@@ -231,6 +231,11 @@
     - id: ui-workspace
       name: '@deepseek-ai/dsh-client-ui-workspace'
 
+    # Workspace enhancements: git branch chip + switcher in the composer tool
+    # row and the right-side collapsible terminal sidebar.
+    - id: ui-workspace-ext
+      name: '@deepseek-ai/dsh-client-ui-workspace-ext'
+
     # Input triggers: the '/' | '@' pipeline (ui-input-trigger), the command surface over
     # it (ui-commands), and the two reference sources (ui-skill / ui-subagent).
     - id: ui-input-trigger

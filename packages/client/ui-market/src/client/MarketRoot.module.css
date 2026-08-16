@@ -495,3 +495,77 @@
   opacity: 0.6;
   cursor: default;
 }
+
+
+/* Tab bar: market and Cordis plugin views inside the panel. */
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 24px 0;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+
+.tab {
+  font-size: 13px;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.tab:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+.tabActive {
+  color: var(--dsw-alias-label-primary);
+  border-bottom-color: var(--dsw-alias-brand-primary);
+}
+
+/* Cordis tab: the session's dynamic plugin summary list. */
+.cordisList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cordisRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.cordisName {
+  flex: 1;
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cordisId {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.cordisRunning {
+  font-size: 11px;
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.cordisStopped {
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+}

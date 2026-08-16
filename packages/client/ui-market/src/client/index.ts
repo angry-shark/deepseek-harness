@@ -131,6 +131,16 @@ export function apply(ctx: ClientContext): void {
       if (!answered.ok) throw new Error(`${answered.error.code}: ${answered.error.message}`)
       return answered.value
     },
+    cordisPlugins: async () => {
+      const answered = await ctx.remote.dynamicCordisRunner.inventory()
+      if (!answered.ok) throw new Error(`${answered.error.code}: ${answered.error.message}`)
+      return answered.value.map(row => ({
+        pluginId: String(row.pluginId),
+        name: row.packages[0]?.name ?? row.pluginId,
+        running: row.activeRun !== undefined,
+        ...(row.currentPackageId === undefined ? {} : { currentPackageId: String(row.currentPackageId) }),
+      }))
+    },
   })
 
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({

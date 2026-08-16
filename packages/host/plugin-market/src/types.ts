@@ -3,12 +3,19 @@ import type { JsonValue } from '@deepseek-ai/dsh-session/types'
 
 declare module '@deepseek-ai/cordis' {
   interface Events {
-    /** One installed plugin's store or mount state changed. */
+    /**
+     * One installed plugin's store or mount state changed.
+     * @mode emit
+     * @param payload - the affected plugin and the action that moved it.
+     */
     'market/installed-change'(payload: {
       pluginId: string
       action: 'installed' | 'uninstalled' | 'mounted' | 'failed'
     }): void
-    /** The configured git sources changed or were refreshed. */
+    /**
+     * The configured git sources changed or were refreshed.
+     * @mode emit
+     */
     'market/sources-change'(): void
   }
 }

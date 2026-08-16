@@ -43,6 +43,16 @@ export interface MarketRootInjected {
   removeSource: (url: string) => Promise<MarketSourceUpdateResult>
   /** Re-fetch every configured git source. */
   refreshSources: () => Promise<MarketSourcesSnapshot>
+  /** Read the session's dynamic Cordis plugins for the Cordis tab. */
+  cordisPlugins: () => Promise<CordisPluginSummary[]>
+}
+
+/** One dynamic Cordis plugin row shown in the market dialog's Cordis tab. */
+export interface CordisPluginSummary {
+  pluginId: string
+  name: string
+  running: boolean
+  currentPackageId?: string
 }
 
 /** Full component props assembled by the footer-action slot renderer. */
@@ -70,10 +80,10 @@ function sourceLabel(entry: MarketCatalogEntry, t: MarketRootProps['t']): string
   return t('sourceStore')
 }
 
-/** The centered modal layer: mask, header, sources strip, and the scrollable catalog. */
+/** The centered modal layer: mask, header, tabs, sources strip, and the scrollable catalog. */
 function MarketPanel({
   state, sources, query, onQuery, sourceInput, onSourceInput, sourceBusy, onAddSource,
-  onRemoveSource, onRefreshSources, busyId, confirmingId, onInstall, onUninstall, actionError, onClose, t,
+  onRemoveSource, onRefreshSources, busyId, confirmingId, onInstall, onUninstall, actionError, onClose, cordisPlugins, t,
 }: {
   state: ViewState
   sources: MarketSourcesSnapshot | undefined
@@ -91,10 +101,12 @@ function MarketPanel({
   onUninstall: (id: MarketPluginId) => void
   actionError: string | undefined
   onClose: () => void
+  cordisPlugins: () => Promise<CordisPluginSummary[]>
   t: MarketRootProps['t']
 }) {
   const titleId = useId()
   const closeButton = useRef<HTMLButtonElement | null>(null)
+  const [tab, setTab] = useState<'market' | 'cordis'>('market')
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
@@ -128,154 +140,213 @@ function MarketPanel({
             <span className={css.hiddenLabel}>{t('close')}</span>
           </button>
         </div>
-        <div className={css.body} aria-busy={state.status === 'loading'}>
-          {state.status === 'loading' ? <p className={css.status}>{t('loading')}</p> : null}
-          {state.status === 'error' ? <p className={css.status} role="alert">{t('error')}</p> : null}
-          {state.status === 'ready' ? (
-            <>
-              <section className={css.sources}>
-                <div className={css.sourcesHeading}>
-                  <h3>{t('sourcesTitle')}</h3>
-                  <button
-                    type="button"
-                    className={css.refreshButton}
-                    disabled={sourceBusy}
-                    onClick={onRefreshSources}
-                  >
-                    <IconRefreshOutline14 size={14} aria-hidden="true" />
-                    {sourceBusy ? t('refreshingSources') : t('refreshSources')}
-                  </button>
-                </div>
-                <p className={css.sourcesIntro}>{t('sourcesIntro')}</p>
-                {sources === undefined || sources.sources.length === 0 ? (
-                  <p className={css.sourcesEmpty}>{t('sourcesEmpty')}</p>
-                ) : (
-                  <ul className={css.sourceList}>
-                    {sources.sources.map(source => (
-                      <li className={css.sourceRow} key={source.url} data-source-url={source.url}>
-                        <code className={css.sourceUrl}>{source.url}</code>
-                        <span
-                          className={css.sourceState}
-                          data-ok={source.ok ? 'true' : 'false'}
-                          title={source.message}
-                        >
-                          {!source.ok
-                            ? (source.message === undefined ? t('sourceNotFetched') : t('sourceError', { message: source.message }))
-                            : t('sourceOk', { count: String(source.pluginCount) })}
-                        </span>
-                        <button
-                          type="button"
-                          className={css.removeSourceButton}
-                          onClick={() => { onRemoveSource(source.url) }}
-                        >
-                          {t('removeSource')}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <div className={css.addSourceRow}>
-                  <input
-                    type="text"
-                    className={css.addSourceInput}
-                    value={sourceInput}
-                    placeholder={t('addSourcePlaceholder')}
-                    aria-label={t('addSource')}
-                    onChange={(event) => { onSourceInput(event.currentTarget.value) }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') onAddSource()
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className={css.addSourceButton}
-                    disabled={sourceBusy || sourceInput.trim().length === 0}
-                    onClick={onAddSource}
-                  >
-                    {t('addSource')}
-                  </button>
-                </div>
-              </section>
-              <label className={css.search}>
-                <IconSearchOutline16 aria-hidden="true" />
-                <span className={css.visuallyHidden}>{t('search')}</span>
-                <input
-                  type="search"
-                  value={query}
-                  placeholder={t('search')}
-                  aria-label={t('search')}
-                  onChange={(event) => { onQuery(event.currentTarget.value) }}
-                />
-              </label>
-              {actionError !== undefined ? <p className={css.actionError} role="alert">{actionError}</p> : null}
-              <div className={css.catalogHeading}>
-                <h3>{t('catalog')}</h3>
-                <span data-plugin-count={entries.length}>{entries.length}</span>
-              </div>
-              {state.snapshot.entries.length === 0 ? <p className={css.status}>{t('empty')}</p> : null}
-              {state.snapshot.entries.length > 0 && entries.length === 0
-                ? <p className={css.status}>{t('emptySearch')}</p>
-                : null}
-              {entries.length > 0 ? (
-                <ul className={css.cards}>
-                  {entries.map((entry) => {
-                    const busy = busyId === entry.id
-                    const confirming = confirmingId === entry.id
-                    const label = installedLabel(entry, t)
-                    return (
-                      <li className={css.card} key={entry.id} data-market-entry={entry.id}>
-                        <div className={css.cardMain}>
-                          <div className={css.cardTitleRow}>
-                            <strong className={css.cardTitle}>{entry.name}</strong>
-                            <span className={css.sourceTag} data-source={entry.source}>
-                              {sourceLabel(entry, t)}
-                            </span>
-                            {entry.installed ? (
-                              <span
-                                className={css.statusTag}
-                                data-status={entry.status ?? 'mounting'}
-                                data-error={entry.error !== undefined ? 'true' : undefined}
-                                title={entry.error}
-                              >
-                                {label}
-                              </span>
-                            ) : null}
-                          </div>
-                          <p className={css.cardPurpose}>{entry.purpose}</p>
-                          {entry.error !== undefined ? <p className={css.cardError}>{entry.error}</p> : null}
-                        </div>
-                        <div className={css.cardAction}>
-                          {!entry.installed ? (
-                            <button
-                              type="button"
-                              className={css.installButton}
-                              disabled={busy}
-                              onClick={() => { onInstall(entry.id) }}
-                            >
-                              <IconDownloadOutline16 size={14} aria-hidden="true" />
-                              {busy ? t('statusMounting') : t('install')}
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              className={clsx(css.uninstallButton, confirming && css.confirming)}
-                              disabled={busy}
-                              onClick={() => { onUninstall(entry.id) }}
-                            >
-                              <IconTrashOutline16 size={14} aria-hidden="true" />
-                              {confirming ? t('uninstallConfirm', { name: entry.name }) : t('uninstall')}
-                            </button>
-                          )}
-                        </div>
-                      </li>
-                    )
-                  })}
-                </ul>
-              ) : null}
-            </>
-          ) : null}
+        <div className={css.tabs}>
+          <button
+            type="button"
+            className={clsx(css.tab, tab === 'market' && css.tabActive)}
+            onClick={() => { setTab('market') }}
+          >
+            {t('tabMarket')}
+          </button>
+          <button
+            type="button"
+            className={clsx(css.tab, tab === 'cordis' && css.tabActive)}
+            onClick={() => { setTab('cordis') }}
+          >
+            {t('tabCordis')}
+          </button>
         </div>
+        {tab === 'market' ? (
+          <div className={css.body} aria-busy={state.status === 'loading'}>
+            {state.status === 'loading' ? <p className={css.status}>{t('loading')}</p> : null}
+            {state.status === 'error' ? <p className={css.status} role="alert">{t('error')}</p> : null}
+            {state.status === 'ready' ? (
+              <>
+                <section className={css.sources}>
+                  <div className={css.sourcesHeading}>
+                    <h3>{t('sourcesTitle')}</h3>
+                    <button
+                      type="button"
+                      className={css.refreshButton}
+                      disabled={sourceBusy}
+                      onClick={onRefreshSources}
+                    >
+                      <IconRefreshOutline14 size={14} aria-hidden="true" />
+                      {sourceBusy ? t('refreshingSources') : t('refreshSources')}
+                    </button>
+                  </div>
+                  <p className={css.sourcesIntro}>{t('sourcesIntro')}</p>
+                  {sources === undefined || sources.sources.length === 0 ? (
+                    <p className={css.sourcesEmpty}>{t('sourcesEmpty')}</p>
+                  ) : (
+                    <ul className={css.sourceList}>
+                      {sources.sources.map(source => (
+                        <li className={css.sourceRow} key={source.url} data-source-url={source.url}>
+                          <code className={css.sourceUrl}>{source.url}</code>
+                          <span
+                            className={css.sourceState}
+                            data-ok={source.ok ? 'true' : 'false'}
+                            title={source.message}
+                          >
+                            {!source.ok
+                              ? (source.message === undefined ? t('sourceNotFetched') : t('sourceError', { message: source.message }))
+                              : t('sourceOk', { count: String(source.pluginCount) })}
+                          </span>
+                          <button
+                            type="button"
+                            className={css.removeSourceButton}
+                            onClick={() => { onRemoveSource(source.url) }}
+                          >
+                            {t('removeSource')}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <div className={css.addSourceRow}>
+                    <input
+                      type="text"
+                      className={css.addSourceInput}
+                      value={sourceInput}
+                      placeholder={t('addSourcePlaceholder')}
+                      aria-label={t('addSource')}
+                      onChange={(event) => { onSourceInput(event.currentTarget.value) }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') onAddSource()
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className={css.addSourceButton}
+                      disabled={sourceBusy || sourceInput.trim().length === 0}
+                      onClick={onAddSource}
+                    >
+                      {t('addSource')}
+                    </button>
+                  </div>
+                </section>
+                <label className={css.search}>
+                  <IconSearchOutline16 aria-hidden="true" />
+                  <span className={css.visuallyHidden}>{t('search')}</span>
+                  <input
+                    type="search"
+                    value={query}
+                    placeholder={t('search')}
+                    aria-label={t('search')}
+                    onChange={(event) => { onQuery(event.currentTarget.value) }}
+                  />
+                </label>
+                {actionError !== undefined ? <p className={css.actionError} role="alert">{actionError}</p> : null}
+                <div className={css.catalogHeading}>
+                  <h3>{t('catalog')}</h3>
+                  <span data-plugin-count={entries.length}>{entries.length}</span>
+                </div>
+                {state.snapshot.entries.length === 0 ? <p className={css.status}>{t('empty')}</p> : null}
+                {state.snapshot.entries.length > 0 && entries.length === 0
+                  ? <p className={css.status}>{t('emptySearch')}</p>
+                  : null}
+                {entries.length > 0 ? (
+                  <ul className={css.cards}>
+                    {entries.map((entry) => {
+                      const busy = busyId === entry.id
+                      const confirming = confirmingId === entry.id
+                      const label = installedLabel(entry, t)
+                      return (
+                        <li className={css.card} key={entry.id} data-market-entry={entry.id}>
+                          <div className={css.cardMain}>
+                            <div className={css.cardTitleRow}>
+                              <strong className={css.cardTitle}>{entry.name}</strong>
+                              <span className={css.sourceTag} data-source={entry.source}>
+                                {sourceLabel(entry, t)}
+                              </span>
+                              {entry.installed ? (
+                                <span
+                                  className={css.statusTag}
+                                  data-status={entry.status ?? 'mounting'}
+                                  data-error={entry.error !== undefined ? 'true' : undefined}
+                                  title={entry.error}
+                                >
+                                  {label}
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className={css.cardPurpose}>{entry.purpose}</p>
+                            {entry.error !== undefined ? <p className={css.cardError}>{entry.error}</p> : null}
+                          </div>
+                          <div className={css.cardAction}>
+                            {!entry.installed ? (
+                              <button
+                                type="button"
+                                className={css.installButton}
+                                disabled={busy}
+                                onClick={() => { onInstall(entry.id) }}
+                              >
+                                <IconDownloadOutline16 size={14} aria-hidden="true" />
+                                {busy ? t('statusMounting') : t('install')}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className={clsx(css.uninstallButton, confirming && css.confirming)}
+                                disabled={busy}
+                                onClick={() => { onUninstall(entry.id) }}
+                              >
+                                <IconTrashOutline16 size={14} aria-hidden="true" />
+                                {confirming ? t('uninstallConfirm', { name: entry.name }) : t('uninstall')}
+                              </button>
+                            )}
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+        ) : (
+          <CordisTab cordisPlugins={cordisPlugins} t={t} />
+        )}
       </div>
+    </div>
+  )
+}
+
+/** The Cordis tab: a summary list of the session's dynamic Cordis plugins. */
+function CordisTab({
+  cordisPlugins, t,
+}: {
+  cordisPlugins: () => Promise<CordisPluginSummary[]>
+  t: MarketRootProps['t']
+}) {
+  const [plugins, setPlugins] = useState<CordisPluginSummary[] | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    let current = true
+    void cordisPlugins().then(
+      (rows) => { if (current) setPlugins(rows) },
+      () => { if (current) setFailed(true) },
+    )
+    return () => { current = false }
+  }, [cordisPlugins])
+
+  if (failed) return <div className={css.body}><p className={css.status} role="alert">{t('cordisError')}</p></div>
+  if (plugins === null) return <div className={css.body}><p className={css.status}>{t('cordisLoading')}</p></div>
+  if (plugins.length === 0) return <div className={css.body}><p className={css.status}>{t('cordisEmpty')}</p></div>
+  return (
+    <div className={css.body}>
+      <ul className={css.cordisList}>
+        {plugins.map(plugin => (
+          <li className={css.cordisRow} key={plugin.pluginId}>
+            <span className={css.cordisName} title={plugin.pluginId}>{plugin.name}</span>
+            <code className={css.cordisId}>{plugin.pluginId}</code>
+            <span className={plugin.running ? css.cordisRunning : css.cordisStopped}>
+              {plugin.running ? t('cordisRunning') : t('cordisStopped')}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
@@ -286,7 +357,7 @@ function MarketPanel({
  * @returns the market element tree.
  */
 export function MarketRoot({
-  wide, t, useRevision, list, install, uninstall, sources, addSource, removeSource, refreshSources,
+  wide, t, useRevision, list, install, uninstall, sources, addSource, removeSource, refreshSources, cordisPlugins,
 }: MarketRootProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -410,6 +481,7 @@ export function MarketRoot({
           }}
           actionError={actionError}
           onClose={close}
+          cordisPlugins={cordisPlugins}
           t={t}
         />
       )}

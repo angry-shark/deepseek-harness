@@ -1,0 +1,232 @@
+/* Workspace enhancements: git branch chip + anchored switcher menu, and the
+ * right-side collapsible terminal sidebar. Tokens are the shared --dsw-* aliases. */
+
+.gitWrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.gitChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  line-height: 1;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  border: 1px solid var(--dsw-alias-border-l1);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.gitChip:hover {
+  border-color: var(--dsw-alias-border-l2);
+}
+
+.gitIcon {
+  color: var(--dsw-alias-brand-primary);
+  font-weight: 700;
+}
+
+.gitName {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gitCaret {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 10px;
+}
+
+.gitMenu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  min-width: 220px;
+  max-width: 320px;
+  max-height: 280px;
+  overflow: auto;
+  background: var(--dsw-alias-bg-overlay);
+  color: var(--dsw-alias-label-primary);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  padding: 4px;
+  z-index: 60;
+}
+
+.gitItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.gitItem:hover:not(:disabled) {
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.gitItem:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.gitItemMark {
+  width: 14px;
+  color: var(--dsw-alias-state-success-primary);
+  font-size: 12px;
+}
+
+.gitItemCurrent {
+  font-weight: 600;
+}
+
+.gitMenuNote {
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.gitMenuError {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.termRail {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  border-left: 1px solid var(--dsw-alias-border-l2);
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  letter-spacing: 3px;
+  pointer-events: auto;
+  z-index: 40;
+  writing-mode: vertical-rl;
+}
+
+.termRail:hover {
+  color: var(--dsw-alias-brand-primary);
+}
+
+.termPanel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 360px;
+  max-width: 90vw;
+  display: flex;
+  flex-direction: column;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  border-left: 1px solid var(--dsw-alias-border-l2);
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.18);
+  pointer-events: auto;
+  z-index: 40;
+}
+
+.termHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+
+.termTitle {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.termCwd {
+  flex: 1;
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.termBtn {
+  font-size: 12px;
+  padding: 2px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+
+.termBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.termBtn:hover:not(:disabled) {
+  border-color: var(--dsw-alias-border-l2);
+}
+
+.termOut {
+  flex: 1;
+  overflow: auto;
+  padding: 10px 14px;
+}
+
+.termOut pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--dsw-alias-label-primary);
+}
+
+.termError {
+  padding: 4px 14px;
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 12px;
+}
+
+.termInput {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+
+.termInput input {
+  flex: 1;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+}
+
+.termInput input:focus {
+  outline: none;
+  border-color: var(--dsw-alias-border-l2);
+}
