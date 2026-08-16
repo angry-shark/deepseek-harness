@@ -6,29 +6,29 @@
 
 ## 两条发布路径
 
-| 触发 | 打包（构建 tarball） | 发布到 npm |
+| 触发 | 打包（构建 tarball） | 分发 |
 |---|---|---|
-| 推送 `dev-tui` | 自动 | 仅 registry 缺失的版本 |
-| 推送 `master` | 自动 | 否 |
-| 拉取请求 | 自动（打包验证） | 否 |
-| 从 `dsh-v*` tag 手动触发 | 是 | 整个发布族 |
+| 推送 `dev-tui` | 自动 | 挂到 GitHub Release（用 URL 安装 `.tgz`） |
+| 推送 `master` | 自动 | 无 |
+| 拉取请求 | 自动（打包验证） | 无 |
+| 从 `dsh-v*` tag 手动触发 | 是 | npm（整个发布族） |
 
-两条路径都精确使用 `pack` job 产出的字节；`release:publish` 按包决定：registry 缺失的版本发布，已发布且完整性一致的 tarball 跳过，已存在版本上内容不同的 tarball 使运行失败。预发布版本（含 `-`）以 `next` dist-tag 发布，绝不抢占 `latest`。
+`dev-tui` 路径绝不接触 npm：其推送创建标签为 `dsh-dev-<commit>` 的预发布，附上每个 tarball，你通过 Release URL 安装包——`npm install https://github.com/<owner>/deepseek-harness/releases/download/dsh-dev-<commit>/deepseek-ai-dsh-tui-0.1.0-rc.5.tgz`。tarball 声明自己的包名，因此 URL 安装无需任何 registry scope 权限。npm 路径精确使用 `pack` job 产出的字节；`release:publish` 按包决定：registry 缺失的版本发布，已发布且完整性一致的 tarball 跳过，已存在版本上内容不同的 tarball 使运行失败。预发布版本（含 `-`）以 `next` dist-tag 发布，绝不抢占 `latest`。
 
 ## 首次设置（一次性）
 
-- 添加发布 token：Settings → Environments → `npm-publish` → Environment secrets → `NPM_TOKEN`（或同名的仓库级 Actions secret；环境级优先）。token 账号需要对 `@deepseek-ai` scope 有读写权限，且必须是 automation 类 token，这样 CI 无需交互式两步验证。
-- 如果 `npm-publish` 环境设有必需审批人，则每次发布——包括自动的 `dev-tui` 路径——都会在 Actions 运行中等待审批。这正是有意保留的人工闸门。
+- 对于 npm 路径：添加发布 token——Settings → Environments → `npm-publish` → Environment secrets → `NPM_TOKEN`（或同名的仓库级 Actions secret；环境级优先）。token 账号需要对 `@deepseek-ai` scope 有读写权限，且必须是 automation 类 token，这样 CI 无需交互式两步验证。GitHub Release 路径不需要 token：工作流自身的 `contents: write` 权限即可附加 tarball。
+- 如果 `npm-publish` 环境设有必需审批人，手动 npm 发布会在 Actions 运行中等待审批。`dev-tui` 的 Release 附件不使用该环境。
 - 只要包位于 `packages/` 下、非 `private`，且版本与发布族的单一版本一致，就自动进入发布族。`pnpm run release:verify --family dsh` 会报告成员数和版本。
 
-## 开发循环（发布 registry 缺失的内容）
+## 开发循环（构建到 GitHub，按 URL 安装）
 
 ```sh
-# edit, commit, push — pack runs and publishes every registry-missing version
+# edit, commit, push — pack runs and a GitHub Release carries every tarball
 git push origin dev-tui
 ```
 
-在 `Actions → Release (dsh)` 观察运行。`dev-tui` 推送以发布模式运行发布 verify 门禁（包可发布、版本单一），并通过 `RELEASE_ALLOW_BRANCH_PUBLISH` 绕过 `dsh-v*` tag 校验，然后发布。新包是常见情况：首次 `dev-tui` 推送会在当前家族版本下发布它们；在版本移动之前，后续推送不再发布任何内容。
+在 `Actions → Release (dsh)` 观察运行，然后在仓库的 Releases 页面打开 `dsh-dev-<commit>` 预发布，复制某个包的 `.tgz` 链接。本次变更发布的包是 `@deepseek-ai/dsh-tui` 和 `@deepseek-ai/dsh-tui-app`；其 tarball 为 `deepseek-ai-dsh-tui-<version>.tgz` 和 `deepseek-ai-dsh-tui-app-<version>.tgz`。
 
 ## 正式发布（整个发布族）
 
@@ -43,4 +43,4 @@ git push origin dsh-v<version>
 
 ## 两条路径共享同一安全姿态
 
-除显式选择加入的 `dev-tui` 推送（`RELEASE_ALLOW_BRANCH_PUBLISH`，仅由该推送事件设置）外，tag 门禁对每条发布路径都是承重的。`master` 推送和拉取请求永远不会到达 registry。发布从不重新构建：它上传 `pack` job 已验证的产物，因此 PR 在发布任何东西之前就证明整个发布集仍可打包。
+tag 门禁仅对 npm 路径承重。`dev-tui` 推送和拉取请求永远不会到达 registry；`dev-tui` 推送构建并附加 tarball 到预发布，`master` 推送不构建任何可分发的产物。发布从不重新构建：它上传 `pack` job 已验证的产物，因此 PR 在发布任何东西之前就证明整个发布集仍可打包。

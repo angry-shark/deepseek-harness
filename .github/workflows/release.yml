@@ -10,8 +10,8 @@ name: Release (dsh)
 on:
   pull_request:
   push:
-    # `dev-tui` also publishes: its pushes publish whatever versions the
-    # registry lacks, bypassing the tag gate through RELEASE_ALLOW_BRANCH_PUBLISH.
+    # dev-tui builds the tarballs and attaches them to a GitHub Release
+    # (install via release .tgz URL); it never publishes to npm.
     branches: [master, dev-tui]
   workflow_dispatch:
     inputs:
@@ -73,10 +73,7 @@ jobs:
 
       - name: Verify release version
         env:
-          # A manual publish (tag) and every dev-tui push run the publishing
-          # gates; the dev-tui path opts out of the tag check below.
-          RELEASE_PUBLISH: ${{ inputs.publish || (github.event_name == 'push' && github.ref_name == 'dev-tui') }}
-          RELEASE_ALLOW_BRANCH_PUBLISH: ${{ github.event_name == 'push' && github.ref_name == 'dev-tui' && '1' || '' }}
+          RELEASE_PUBLISH: ${{ inputs.publish }}
         run: pnpm run release:verify --family dsh
 
       - name: Build
@@ -111,9 +108,43 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  release-assets:
+    name: Attach npm tarballs to a GitHub Release
+    if: github.event_name == 'push' && github.ref_name == 'dev-tui'
+    needs: pack
+    runs-on: ubuntu-24.04
+    # Creating a Release and uploading assets writes to the repository.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Resolve release tag
+        id: tag
+        run: |
+          echo "name=dsh-dev-${GITHUB_SHA:0:8}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dsh-npm-tarballs
+          path: dist/npm
+
+      - name: Attach tarballs to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          target_commitish: ${{ github.ref }}
+          prerelease: true
+          generate_release_notes: true
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          files: dist/npm/*.tgz
+
   publish:
     name: Publish to npm
-    if: inputs.publish || (github.event_name == 'push' && github.ref_name == 'dev-tui')
+    if: inputs.publish
     needs: pack
     runs-on: ubuntu-24.04
     # Required reviewers and the allowed tags live on the environment; this is
