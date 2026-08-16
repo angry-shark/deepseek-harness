@@ -60,6 +60,13 @@ function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   })
 }
 
+/** The user's default shell (zsh on macOS when unset), like the VS Code terminal. */
+function userShell(): string {
+  const explicit = process.env.SHELL
+  if (typeof explicit === 'string' && explicit !== '') return explicit
+  return process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash'
+}
+
 /** Read .git/HEAD, following the gitdir-pointer file form used by worktrees/submodules. */
 async function readGitHead(fs: FileSystem, root: string): Promise<string | null> {
   try {
@@ -296,7 +303,7 @@ export function apply(ctx: Context): void {
       if (cwd === undefined) { json(res, 400, { ok: false, error: 'missing cwd' }); return }
       try {
         const handle = await subprocess.spawnTerminal({
-          argv: ['/bin/bash'],
+          argv: [userShell()],
           cwd,
           rows: 30,
           cols: 120,
@@ -313,8 +320,11 @@ export function apply(ctx: Context): void {
             term.buffer += String(chunk)
           }
         })
-        handle.output.on('end', () => { term.exited = true })
-        void handle.done.then(() => { term.exited = true }).catch(() => { term.exited = true })
+        // Exit handlers are latched to the handle they were attached to: a
+        // replaced session (a later spawn) must not mark the current one exited.
+        handle.output.on('end', () => { if (term.handle === handle) term.exited = true })
+        void handle.done.then(() => { if (term.handle === handle) term.exited = true })
+          .catch(() => { if (term.handle === handle) term.exited = true })
         json(res, 200, { ok: true })
       } catch (error) {
         json(res, 200, { ok: false, error: error instanceof Error ? error.message : String(error) })

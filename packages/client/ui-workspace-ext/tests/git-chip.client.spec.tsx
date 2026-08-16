@@ -57,6 +57,11 @@ describe('GitBranchChip', () => {
     render(<GitBranchChip {...chipProps()} />)
     await waitFor(() => { expect(screen.getByText('dev')).toBeTruthy() })
     expect(vi.mocked(api.gitBranch)).toHaveBeenCalledWith('/repo')
+    // The trigger chrome matches the sibling access-mode selector: a branch
+    // svg icon and a chevron, no text glyphs.
+    const chip = screen.getByRole('button')
+    expect(chip.querySelectorAll('svg').length).toBe(2)
+    expect(chip.textContent).not.toContain('⎇')
   })
 
   it('stays hidden when the repository has no branch (detached short sha still shows)', async () => {

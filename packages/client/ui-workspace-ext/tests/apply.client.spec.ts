@@ -14,11 +14,19 @@ describe('workspace-ext browser apply', () => {
         return () => {}
       }),
     }
-    apply({ slots } as never)
-    expect(inject).toEqual(['slots'])
-    expect(registered.map(entry => `${entry.name}#${entry.id ?? ''}`).sort()).toEqual([
-      'conversation.input.left#git-branch-chip',
-      'shell.overlay#workspace-panel',
+    const layout = { toggleRight: vi.fn() }
+    apply({ slots, layout } as never)
+    expect(inject).toEqual(['slots', 'layout'])
+    expect(registered.map(entry => entry.name).sort()).toEqual([
+      'conversation.input.left',
+      'shell.right',
     ])
+    // The shell.right registration injects the layout toggle; the injected
+    // callback must forward to the layout service.
+    const right = registered.find(entry => entry.name === 'shell.right') as
+      { inject?: (() => { toggleRight: () => void }) | undefined }
+    const face = right.inject?.()
+    face?.toggleRight()
+    expect(layout.toggleRight).toHaveBeenCalledTimes(1)
   })
 })

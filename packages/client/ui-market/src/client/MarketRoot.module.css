@@ -554,6 +554,19 @@
   white-space: nowrap;
 }
 
+/* Run-state dot: green when the plugin runs, muted when stopped. */
+.cordisDot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dsw-alias-state-success-primary);
+}
+
+.cordisDotStopped {
+  background: var(--dsw-alias-label-tertiary);
+}
+
 .cordisId {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;

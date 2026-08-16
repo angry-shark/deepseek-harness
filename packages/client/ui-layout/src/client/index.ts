@@ -71,6 +71,17 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'details': { kind: 'single'; scope: 'session'; owner: DetailsOwnerProps }
     /**
+     * The right workspace column, between the details column and the frame's
+     * right edge. OCCUPIED by ui-workspace-ext's workspace panel (terminal +
+     * Git tabs); registering here replaces the column. Like the sidebar, the
+     * column participates in the concession chain — an open panel squeezes
+     * the center column instead of overlaying it.
+     *
+     * The occupant receives the frame's live column state (collapsed, width)
+     * and is expected to render a compact edge rail while collapsed.
+     */
+    'shell.right': { kind: 'single'; scope: 'root'; owner: RightOwnerProps }
+    /**
      * Frame-wide floating layer, above every column and outside their scroll
      * containers. Deliberately generic and unowned by any feature: a badge, a
      * toast stack or a status pill all belong here, and entries order among
@@ -104,6 +115,14 @@ export interface ConvOwnerProps {}
 /** Details owner share: empty — sessionId arrives as a framework-standard prop. */
 export interface DetailsOwnerProps {}
 
+/** Right workspace column owner share: live column state from the concession solve. */
+export interface RightOwnerProps {
+  /** True when the right column is closed (the column renders a compact edge rail). */
+  collapsed: boolean
+  /** Rendered column width in px (0 when collapsed). */
+  width: number
+}
+
 /** Required services (cordis fiber inject — the loader passes all module exports as an object plugin). */
 export const inject = ['slots', 'theme']
 
@@ -123,6 +142,7 @@ export function apply(ctx: ClientContext): void {
         'sidebar': { kind: 'single', scope: 'root' },
         'conversation': { kind: 'single', scope: 'session-maybe' },
         'details': { kind: 'single', scope: 'session' },
+        'shell.right': { kind: 'single', scope: 'root' },
         'shell.overlay': { kind: 'list', scope: 'root' },
       },
       // Exclusive store: the factory itself — the framework instantiates per

@@ -6,6 +6,7 @@
  */
 import { useEffect, useState, type ReactNode } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import { IconBranchOutline16, IconChevronDownOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
 // Type-only: pull the slot-declaration and standard-props merges into the type graph.
 import type {} from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -79,15 +80,20 @@ export function GitBranchChip(props: GitBranchChipProps): ReactNode | null {
 
   return (
     <span className={css.gitWrap}>
-      <span
+      <button
+        type="button"
         className={css.gitChip}
         title={`${info.detached ? 'detached HEAD · ' : ''}${info.path}（点击切换分支）`}
         onClick={openMenu}
       >
-        <span className={css.gitIcon}>⎇</span>
+        {/* SVG chrome matching the sibling access-mode selector: a neutral
+            icon + label + rotating chevron, all in the trigger's text color. */}
+        <span className={css.gitIcon} aria-hidden><IconBranchOutline16 size={14} /></span>
         <span className={css.gitName}>{info.branch}</span>
-        <span className={css.gitCaret}>▾</span>
-      </span>
+        <span className={menu.open ? `${css.gitCaret} ${css.gitCaretOpen}` : css.gitCaret} aria-hidden>
+          <IconChevronDownOutline14 />
+        </span>
+      </button>
       {menu.open ? (
         <div className={css.gitMenu}>
           {menu.busy ? <div className={css.gitMenuNote}>切换中…</div>

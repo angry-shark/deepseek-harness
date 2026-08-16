@@ -86,8 +86,9 @@ class FakeTerminal {
   }
   readonly done: Promise<{ code: number }>
   resolveDone!: (value: { code: number }) => void
+  rejectDone!: (reason: unknown) => void
   constructor() {
-    this.done = new Promise((resolve) => { this.resolveDone = resolve })
+    this.done = new Promise((resolve, reject) => { this.resolveDone = resolve; this.rejectDone = reject })
   }
   async write(data: string): Promise<void> { this.writes.push(data) }
   async inspectForeground(): Promise<{ processGroupId: number; inputWaiting: boolean } | undefined> { return undefined }
@@ -449,6 +450,108 @@ describe('workspace-ext node half', () => {
     await byPath(routes, '/api/workspace-ext/term/write').handler(
       makeReq('POST', '/api/workspace-ext/term/write', '127.0.0.1:52351', { text: 'x' }), resNoTerm)
     expect(bodyOf(resNoTerm).error).toBe('no terminal running')
+  })
+
+  it('keeps a replaced terminal from marking the current one exited', async () => {
+    const { ctx, routes } = bench()
+    const subprocess = fakeSubprocess([])
+    ;(ctx as unknown as Record<string, unknown>)['svc:subprocess'] = subprocess
+    const spawnRoute = byPath(routes, '/api/workspace-ext/term/spawn')
+
+    const resA = makeRes()
+    await spawnRoute.handler(makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo' }), resA)
+    expect(bodyOf(resA).ok).toBe(true)
+    const terminalAPromise = (subprocess.spawnTerminal as ReturnType<typeof vi.fn>).mock.results[0]!.value as Promise<FakeTerminal>
+    const terminalA = await terminalAPromise
+
+    // A second spawn (a fresh page auto-connect) replaces the current handle.
+    const resB = makeRes()
+    await spawnRoute.handler(makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo' }), resB)
+    const terminalBPromise = (subprocess.spawnTerminal as ReturnType<typeof vi.fn>).mock.results[1]!.value as Promise<FakeTerminal>
+    const terminalB = await terminalBPromise
+
+    // The replaced session finishing must not latch exited onto the current one.
+    terminalA.resolveDone({ code: 0 })
+    await terminalA.done
+    terminalA.output.emit('end')
+    const resPoll = makeRes()
+    await byPath(routes, '/api/workspace-ext/term/poll').handler(makeReq('GET', '/api/workspace-ext/term/poll'), resPoll)
+    expect(bodyOf(resPoll).exited).toBe(false)
+
+    // The current session's stream ending marks it exited.
+    terminalB.output.emit('end')
+    const resPollMid = makeRes()
+    await byPath(routes, '/api/workspace-ext/term/poll').handler(makeReq('GET', '/api/workspace-ext/term/poll'), resPollMid)
+    expect(bodyOf(resPollMid).exited).toBe(true)
+
+    // The current session's done resolution keeps it exited.
+    terminalB.resolveDone({ code: 0 })
+    await terminalB.done
+    const resPoll2 = makeRes()
+    await byPath(routes, '/api/workspace-ext/term/poll').handler(makeReq('GET', '/api/workspace-ext/term/poll'), resPoll2)
+    expect(bodyOf(resPoll2).exited).toBe(true)
+  })
+
+  it('latches a rejecting done to the handle that rejected', async () => {
+    const { ctx, routes } = bench()
+    const subprocess = fakeSubprocess([])
+    ;(ctx as unknown as Record<string, unknown>)['svc:subprocess'] = subprocess
+    const spawnRoute = byPath(routes, '/api/workspace-ext/term/spawn')
+
+    await spawnRoute.handler(makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo' }), makeRes())
+    const terminalAPromise = (subprocess.spawnTerminal as ReturnType<typeof vi.fn>).mock.results[0]!.value as Promise<FakeTerminal>
+    const terminalA = await terminalAPromise
+    await spawnRoute.handler(makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo' }), makeRes())
+    const terminalBPromise = (subprocess.spawnTerminal as ReturnType<typeof vi.fn>).mock.results[1]!.value as Promise<FakeTerminal>
+    const terminalB = await terminalBPromise
+
+    // The replaced session rejecting must not latch exited onto the current one.
+    terminalA.rejectDone(new Error('pty closed'))
+    await terminalA.done.catch(() => { /* expected rejection */ })
+    const resPoll = makeRes()
+    await byPath(routes, '/api/workspace-ext/term/poll').handler(makeReq('GET', '/api/workspace-ext/term/poll'), resPoll)
+    expect(bodyOf(resPoll).exited).toBe(false)
+
+    // The current session rejecting marks the terminal exited.
+    terminalB.rejectDone(new Error('pty closed'))
+    await terminalB.done.catch(() => { /* expected rejection */ })
+    const resPoll2 = makeRes()
+    await byPath(routes, '/api/workspace-ext/term/poll').handler(makeReq('GET', '/api/workspace-ext/term/poll'), resPoll2)
+    expect(bodyOf(resPoll2).exited).toBe(true)
+  })
+
+  it('spawns the user default shell, falling back per platform', async () => {
+    const { ctx, routes } = bench()
+    const subprocess = fakeSubprocess([])
+    ;(ctx as unknown as Record<string, unknown>)['svc:subprocess'] = subprocess
+    const spawnRoute = byPath(routes, '/api/workspace-ext/term/spawn')
+    const spawnSpecs = (subprocess.spawnTerminal as ReturnType<typeof vi.fn>).mock.calls as Array<[{ argv: string[] }]>
+
+    const realShell = process.env.SHELL
+    const realPlatform = process.platform
+    try {
+      // SHELL set → used verbatim.
+      process.env.SHELL = '/opt/homebrew/bin/zsh'
+      const res = makeRes()
+      await spawnRoute.handler(makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo' }), res)
+      expect(bodyOf(res).ok).toBe(true)
+      expect(spawnSpecs[0]![0].argv[0]).toBe('/opt/homebrew/bin/zsh')
+
+      // SHELL unset → macOS defaults to zsh, everywhere else to bash.
+      process.env.SHELL = ''
+      const resMac = makeRes()
+      await spawnRoute.handler(makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo' }), resMac)
+      expect(spawnSpecs[1]![0].argv[0]).toBe('/bin/zsh')
+
+      Object.defineProperty(process, 'platform', { value: 'linux' })
+      const resLinux = makeRes()
+      await spawnRoute.handler(makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo' }), resLinux)
+      expect(spawnSpecs[2]![0].argv[0]).toBe('/bin/bash')
+    } finally {
+      if (realShell === undefined) delete process.env.SHELL
+      else process.env.SHELL = realShell
+      Object.defineProperty(process, 'platform', { value: realPlatform })
+    }
   })
 
   it('handles malformed bodies and write/terminate failures', async () => {

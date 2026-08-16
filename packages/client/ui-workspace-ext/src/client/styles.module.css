@@ -1,46 +1,66 @@
 /* Workspace enhancements: git branch chip + anchored switcher menu, and the
- * right-side collapsible tabbed panel (terminal + Git workspace). Tokens are
- * the shared --dsw-* aliases. */
+ * right workspace panel (terminal + Git tabs) filling the shell.right layout
+ * column. Tokens are the shared --dsw-* aliases. */
 
 .gitWrap {
   position: relative;
   display: inline-flex;
 }
 
+/* Composer-row chip matching the sibling permission selector: a 28px rounded
+   pill with the label + caret, transparent chrome and a hover fill. */
 .gitChip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  line-height: 1;
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: var(--dsw-alias-bg-layer-2);
-  color: var(--dsw-alias-label-primary);
-  border: 1px solid var(--dsw-alias-border-l1);
+  gap: 4px;
+  min-width: 0;
+  max-width: 220px;
+  height: 28px;
+  padding: 0 4px 0 8px;
+  border: none;
+  border-radius: 24px;
+  outline: none;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
 }
 
 .gitChip:hover {
-  border-color: var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-interactive-bg-hover);
 }
 
+.gitChip:focus-visible {
+  box-shadow: 0 0 0 2px var(--dsw-alias-border-l3);
+}
+
+/* The chip's glyphs mirror the sibling access-mode selector: a neutral SVG
+   icon (branch) inheriting the trigger text color, and a rotating chevron. */
 .gitIcon {
-  color: var(--dsw-alias-brand-primary);
-  font-weight: 700;
+  display: inline-flex;
+  flex: 0 0 auto;
 }
 
 .gitName {
-  max-width: 140px;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .gitCaret {
-  color: var(--dsw-alias-label-secondary);
-  font-size: 10px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--dsw-alias-label-caption);
+  transition: transform 120ms ease;
+}
+
+.gitCaretOpen {
+  transform: rotate(180deg);
 }
 
 .gitMenu {
@@ -104,65 +124,53 @@
   color: var(--dsw-alias-state-error-primary);
 }
 
-/* Shared rail/panel geometry: fixed full-height column on the right edge.
-   The width transition animates collapse and expand; the rail label swaps in
-   once the panel content unmounts at settle. */
+/* Shared rail/panel geometry: the shell.right column occupant fills the
+   layout column the frame grants. The rail is a compact full-height edge
+   strip; the expanded panel fills the column (which the concession chain
+   sized) and the frame animates the column width. */
 .rightRail,
-.rightPanel,
-.rightPanelCollapsing {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
+.rightPanel {
+  height: 100%;
+  box-sizing: border-box;
   background: var(--dsw-alias-bg-layer-1);
   color: var(--dsw-alias-label-primary);
   border-left: 1px solid var(--dsw-alias-border-l2);
-  pointer-events: auto;
-  z-index: 40;
 }
 
 .rightRail {
-  width: 40px;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  padding: 8px 0;
   user-select: none;
-  font-size: 12px;
-  letter-spacing: 3px;
-  writing-mode: vertical-rl;
 }
 
-.rightRail:hover {
+/* One vertical tab per panel view; clicking expands the column on that tab. */
+.railTab {
+  flex: 1;
+  min-height: 56px;
+  margin: 0 4px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: 2px;
+  writing-mode: vertical-rl;
+  cursor: pointer;
+}
+
+.railTab:hover {
   color: var(--dsw-alias-brand-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
 }
 
 .rightPanel {
-  width: 360px;
-  max-width: 90vw;
   display: flex;
   flex-direction: column;
-  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.18);
-  transition: width 180ms ease;
-}
-
-.rightPanelCollapsing {
-  width: 40px;
-  overflow: hidden;
-  transition: width 180ms ease;
-}
-
-.panelContent {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  opacity: 1;
-  transition: opacity 120ms ease;
-}
-
-.rightPanelCollapsing .panelContent {
-  opacity: 0;
+  min-width: 0;
 }
 
 .panelHead {
@@ -183,6 +191,9 @@
   color: var(--dsw-alias-label-secondary);
   cursor: pointer;
   font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .panelTab:hover {
@@ -196,14 +207,90 @@
   font-weight: 600;
 }
 
-.panelCwd {
+.panelTabBadge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--dsw-alias-brand-primary);
+  color: var(--dsw-alias-label-primary-inverted);
+}
+
+.panelHeadSpacer {
   flex: 1;
-  font-size: 11px;
+}
+
+/* Collapse control: a panel icon mirrored from the sidebar's (the right
+   column closes against the right edge), drawn with pure CSS. */
+.collapseBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
   color: var(--dsw-alias-label-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.collapseBtn:hover {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.panelRightIcon {
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  position: relative;
+}
+
+.panelRightIcon::after {
+  content: '';
+  position: absolute;
+  top: -1.5px;
+  right: -1.5px;
+  width: 4px;
+  height: calc(100% + 3px);
+  border-radius: 0 2px 2px 0;
+  background: currentColor;
+}
+
+/* VS Code style tab-scoped actions: flat ghost buttons in a slim toolbar
+   inside each tab's content, below the panel header. */
+.headBtn {
+  font-size: 12px;
+  padding: 4px 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  font-family: inherit;
   white-space: nowrap;
-  text-align: right;
+}
+
+.headBtn:hover:not(:disabled) {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.headBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Live-session dot on the terminal tab label. */
+.termDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--dsw-alias-state-success-primary);
 }
 
 .termBody,
@@ -214,20 +301,61 @@
   flex-direction: column;
 }
 
+/* Tab-scoped action toolbar: a slim strip inside each tab's content, below
+   the panel header, holding that tab's own controls. */
+.termToolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  flex: none;
+}
+
+/* VS Code terminal: a dark editor-style surface holding the shell's own
+   stream (ANSI colors replayed by the renderer) in one scrollable viewport;
+   the command input is an invisible field on the last prompt line with the
+   native caret. */
 .termOut {
   flex: 1;
   overflow: auto;
   padding: 10px 14px;
+  background: var(--dsw-alias-bg-module-platform);
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
-.termOut pre {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-all;
+.termLineOut {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
   line-height: 1.45;
   color: var(--dsw-alias-label-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.termStatus {
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+  padding: 4px 0;
+}
+
+.termLine {
+  display: flex;
+  align-items: center;
+  padding: 2px 0 6px;
+}
+
+.termLine input {
+  flex: 1;
+  min-width: 48px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  caret-color: var(--dsw-alias-state-success-primary);
 }
 
 .termError {
@@ -237,67 +365,18 @@
   flex: none;
 }
 
-.termInput {
-  display: flex;
-  gap: 8px;
-  padding: 8px 10px;
-  border-top: 1px solid var(--dsw-alias-border-l1);
-  flex: none;
-}
-
-.termInput input {
-  flex: 1;
-  font-size: 12px;
-  padding: 4px 8px;
-  border-radius: 6px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  background: var(--dsw-alias-bg-base);
-  color: var(--dsw-alias-label-primary);
-}
-
-.termInput input:focus {
-  outline: none;
-  border-color: var(--dsw-alias-border-l2);
-}
-
-.termBtn {
-  font-size: 12px;
-  padding: 2px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  background: var(--dsw-alias-bg-base);
-  color: var(--dsw-alias-label-primary);
-  cursor: pointer;
-  font-family: inherit;
-}
-
-.termBtn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.termBtn:hover:not(:disabled) {
-  border-color: var(--dsw-alias-border-l2);
-}
-
-.termActions {
-  display: flex;
-  gap: 6px;
-  padding: 0 10px 10px;
-  flex: none;
-}
-
-.termActions .termBtn:first-child {
-  margin-left: auto;
-}
-
-/* Git working-tree tab. */
+/* Git working-tree tab, modeled on the VS Code source-control panel. */
 .gitSummary {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 10px 14px 4px;
   flex: none;
+}
+
+.gitBranchIcon {
+  flex: none;
+  color: var(--dsw-alias-label-secondary);
 }
 
 .gitBranch {
@@ -307,6 +386,17 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* VS Code source-control change count: the total in a pill, like the SCM title. */
+.gitTotal {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-secondary);
 }
 
 .gitDelta {
@@ -322,12 +412,48 @@
   flex: none;
 }
 
-.gitList {
+.gitGroups {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  margin: 0;
   padding: 0 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+.gitGroup {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gitGroupHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+}
+
+.gitGroupTitle {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.gitGroupCount {
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.gitList {
+  margin: 0;
+  padding: 0;
   list-style: none;
   display: flex;
   flex-direction: column;
@@ -346,36 +472,34 @@
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
-.gitCodes {
-  display: inline-flex;
-  gap: 3px;
+/* VS Code source-control glyph: a single letter tinted by its status. */
+.gitGlyph {
   flex: none;
-  width: 44px;
-}
-
-.gitCode {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 10px;
-  padding: 0 4px;
+  font-weight: 700;
   border-radius: 4px;
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-secondary);
 }
 
-.gitCode[data-kind='M'],
-.gitCode[data-kind='A'],
-.gitCode[data-kind='R'],
-.gitCode[data-kind='C'] {
+.gitGlyph[data-kind='M'],
+.gitGlyph[data-kind='A'],
+.gitGlyph[data-kind='R'],
+.gitGlyph[data-kind='C'] {
   background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 14%, transparent);
   color: var(--dsw-alias-state-success-primary);
 }
 
-.gitCode[data-kind='D'] {
+.gitGlyph[data-kind='D'] {
   background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 14%, transparent);
   color: var(--dsw-alias-state-error-primary);
 }
 
-.gitCode[data-kind='U'],
-.gitCode[data-kind='?'] {
+.gitGlyph[data-kind='U'],
+.gitGlyph[data-kind='?'] {
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary);
 }

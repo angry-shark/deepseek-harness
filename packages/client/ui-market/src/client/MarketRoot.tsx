@@ -339,6 +339,7 @@ function CordisTab({
       <ul className={css.cordisList}>
         {plugins.map(plugin => (
           <li className={css.cordisRow} key={plugin.pluginId}>
+            <span className={plugin.running ? css.cordisDot : `${css.cordisDot} ${css.cordisDotStopped}`} aria-hidden />
             <span className={css.cordisName} title={plugin.pluginId}>{plugin.name}</span>
             <code className={css.cordisId}>{plugin.pluginId}</code>
             <span className={plugin.running ? css.cordisRunning : css.cordisStopped}>
