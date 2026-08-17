@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { MarketRootInjected } from '../src/client/MarketRoot.tsx'
-import { apply } from '../src/client/index.ts'
+import { apply, inject } from '../src/client/index.ts'
 
 interface RegisteredEntry {
   name: string
@@ -46,6 +46,14 @@ function bench() {
 }
 
 describe('ui-market apply', () => {
+  it('declares every remote namespace it reads', () => {
+    // The cordis ctx property proxy gates property reads on the fiber's inject
+    // declaration; a missing entry rejects at runtime (regression: the Cordis
+    // tab failed with "cannot get property remote.dynamicCordisRunner").
+    expect(inject).toContain('remote.pluginMarket')
+    expect(inject).toContain('remote.dynamicCordisRunner')
+  })
+
   it('registers the sidebar trigger and exposes the Cordis inventory face', async () => {
     const { ctx, registered, remote } = bench()
     ;(remote.dynamicCordisRunner.inventory as ReturnType<typeof vi.fn>).mockResolvedValue({

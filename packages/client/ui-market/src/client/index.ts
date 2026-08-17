@@ -31,10 +31,11 @@ const NS = 'market'
 /**
  * Required services (cordis fiber inject). The `dynamicCordisRunner` seat
  * parks this plugin until the runner service exists, so the Client-half loader
- * never races cordis-client-runner at boot; `remote.pluginMarket` parks it
- * until the host market service exists.
+ * never races cordis-client-runner at boot; `remote.pluginMarket` and the
+ * `remote.dynamicCordisRunner` namespace park it until the host market and
+ * runner services exist.
  */
-export const inject = ['slots', 'locale', 'remote', 'remote.pluginMarket', 'dynamicCordisRunner']
+export const inject = ['slots', 'locale', 'remote', 'remote.pluginMarket', 'remote.dynamicCordisRunner', 'dynamicCordisRunner']
 
 /**
  * Mount the market surface and the installed Client-half loader.
