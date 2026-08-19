@@ -394,6 +394,19 @@
   color: var(--dsw-alias-label-primary);
 }
 
+/* Inline rename box: a compact input that replaces the tab label text while
+   editing, so the tab keeps its pill chrome at the same height. */
+.termTabInput {
+  width: 96px;
+  border: 1px solid var(--dsw-alias-border-interactive);
+  border-radius: 4px;
+  background: var(--dsw-alias-fill-bg);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  padding: 1px 4px;
+  outline: none;
+}
+
 .termPanes {
   flex: 1;
   min-height: 0;

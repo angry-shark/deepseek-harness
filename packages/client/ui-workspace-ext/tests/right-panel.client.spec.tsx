@@ -180,6 +180,13 @@ function firstSessionId(): string {
   return decodeURIComponent(stream.url.split('session=')[1] ?? '')
 }
 
+/** Session ids of the panes currently shown (not hidden by tab switching). */
+function visiblePaneIds(): (string | null)[] {
+  return [...document.querySelectorAll('[data-term-pane]')]
+    .filter(pane => pane.getAttribute('data-term-hidden') !== 'true')
+    .map(pane => pane.getAttribute('data-session'))
+}
+
 describe('groupChanges', () => {
   it('splits changes into staged, unstaged, and untracked groups', () => {
     const { staged, unstaged, untracked } = groupChanges([
@@ -385,7 +392,7 @@ describe('RightPanel terminal', () => {
     expect(FakeResizeObserver.observed.length).toBeGreaterThan(0)
   })
 
-  it('creates a second split terminal with 新终端 and streams both', async () => {
+  it('creates a second terminal tab with 新终端 and switches to it', async () => {
     await connectTerminal()
     const sidA = firstSessionId()
     fireEvent.click(screen.getByRole('button', { name: '新终端' }))
@@ -401,8 +408,16 @@ describe('RightPanel terminal', () => {
     fireEvent.click(screen.getByText('清屏'))
     expect(termOf(sidB!).cleared).toBe(1)
     expect(termOf(sidA).cleared).toBe(0)
-    // Both panes are visible in the split view.
+    // 新终端 is a tab switch: only the new pane shows; the first stays
+    // mounted (its stream keeps running) but hidden.
     expect(document.querySelectorAll('[data-term-pane]').length).toBe(2)
+    expect(visiblePaneIds()).toEqual([sidB])
+    // Switching back to the first tab shows it and hides the second.
+    fireEvent.click(screen.getByText('终端 1'))
+    expect(visiblePaneIds()).toEqual([sidA])
+    // The hidden pane's stream never stopped.
+    streamOf(sidB!).emit('B-still')
+    await waitFor(() => { expect(termOf(sidB!).writes).toContain('B-still') }, { timeout: 3000 })
   })
 
   it('splits a new terminal right after the active pane', async () => {
@@ -423,6 +438,38 @@ describe('RightPanel terminal', () => {
     // 分屏 inserts the new pane right after the active one: [A, C, B].
     const paneIds = [...document.querySelectorAll('[data-term-pane]')].map(p => p.getAttribute('data-session'))
     expect(paneIds).toEqual([sidA, sidC, sidB])
+    // The split shows the pane it was split from beside the new one; the
+    // third tab stays hidden.
+    expect(visiblePaneIds()).toEqual([sidA, sidC])
+    // Switching to another tab shows only its singleton group…
+    fireEvent.click(screen.getByText('终端 2'))
+    expect(visiblePaneIds()).toEqual([sidB])
+    // …and switching back to a member of the split group shows the whole
+    // pair again — the split survives the tab switch.
+    fireEvent.click(screen.getByText('终端 3'))
+    expect(visiblePaneIds()).toEqual([sidA, sidC])
+    // Focusing the other member keeps the pair stacked.
+    fireEvent.click(screen.getByText('终端 1'))
+    expect(visiblePaneIds()).toEqual([sidA, sidC])
+  })
+
+  it('renames a terminal tab by double-clicking its label', async () => {
+    await connectTerminal()
+    const sidA = firstSessionId()
+    fireEvent.doubleClick(screen.getByText('终端 1'))
+    const input = screen.getByLabelText('重命名终端 1')
+    fireEvent.change(input, { target: { value: '日志' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(screen.getByText('日志')).toBeTruthy()
+    // The renamed label drives the close-button aria label and the toolbar.
+    expect(screen.getByRole('button', { name: '关闭日志' })).toBeTruthy()
+    expect(termOf(sidA).cleared).toBe(0)
+    // An empty or unchanged commit leaves the label as-is.
+    fireEvent.doubleClick(screen.getByText('日志'))
+    const again = screen.getByLabelText('重命名日志')
+    fireEvent.change(again, { target: { value: '   ' } })
+    fireEvent.keyDown(again, { key: 'Enter' })
+    expect(screen.getByText('日志')).toBeTruthy()
   })
 
   it('closes a pane from its tab and keeps the others', async () => {

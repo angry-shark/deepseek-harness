@@ -104,7 +104,8 @@ export function RightPanel(props: RightPanelProps): ReactNode {
   const path = workspacePathOf(props.useWorkspaces, sessionId)
   const [tab, setTab] = useState<'terminal' | 'git'>('terminal')
   // One entry per open terminal pane (VS Code-style multi-terminal): every
-  // session is always visible in its own stacked pane, the "split" view.
+  // session is a tab. Only the panes that share the active pane's split group
+  // render, so a 分屏 pair stays stacked even after switching to another tab.
   const [panes, setPanes] = useState<TermPane[]>([])
   const [activeKey, setActiveKey] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -128,6 +129,7 @@ export function RightPanel(props: RightPanelProps): ReactNode {
   const termRefs = useRef(new Map<string, Terminal>())
   const fitAddonRefs = useRef(new Map<string, FitAddon>())
   const paneSeqRef = useRef(0)
+  const groupSeqRef = useRef(0)
   const spawningRef = useRef(false)
   // Set when the user kills the last session: the auto-connect effect must not
   // silently respawn a terminal the user just stopped (VS Code leaves the
@@ -153,7 +155,11 @@ export function RightPanel(props: RightPanelProps): ReactNode {
         return
       }
       paneSeqRef.current += 1
-      const pane: TermPane = { key: `pane-${paneSeqRef.current}`, id: result.id, label: `终端 ${paneSeqRef.current}`, exited: false }
+      // 分屏 joins the active pane's split group; 新终端 starts a fresh group.
+      const anchor = insertAfterKey === null ? null : panes.find(p => p.key === insertAfterKey)
+      groupSeqRef.current += 1
+      const group = anchor?.group ?? `group-${groupSeqRef.current}`
+      const pane: TermPane = { key: `pane-${paneSeqRef.current}`, id: result.id, group, label: `终端 ${paneSeqRef.current}`, exited: false }
       setPanes((prev) => {
         // 分屏 inserts the new terminal right after the active pane; 新终端
         // appends at the end — in the stacked layout both split the view.
@@ -185,12 +191,16 @@ export function RightPanel(props: RightPanelProps): ReactNode {
   }, [collapsed, tab, path, panes.length])
 
   // Stable pane callbacks: the TerminalPane effects key on them, so they must
-  // not change identity between renders.
+  // not change identity between renders. Focusing a pane just selects it as
+  // active; its split group stays visible.
   const focusPane = useCallback((key: string) => { setActiveKey(key) }, [])
   const exitPane = useCallback((key: string) => {
     // The exited pane is always still mounted when its stream reports exit.
     /* v8 ignore next 2 -- exit events arrive only for live panes */
     setPanes(prev => prev.map(p => p.key === key ? { ...p, exited: true } : p))
+  }, [])
+  const renamePane = useCallback((key: string, label: string) => {
+    setPanes(prev => prev.map(p => p.key === key ? { ...p, label } : p))
   }, [])
   const termReady = useCallback((id: string, term: Terminal, fit: FitAddon) => {
     termRefs.current.set(id, term)
@@ -246,6 +256,10 @@ export function RightPanel(props: RightPanelProps): ReactNode {
   // The active pane drives the toolbar (清屏/终止/启动).
   const activePane = panes.find(p => p.key === activeKey) ?? null
   const running = panes.some(p => !p.exited)
+  // The panes shown together: all members of the active pane's split group,
+  // so a 分屏 pair stays stacked; everything else is a hidden, still-mounted
+  // tab (specified by group).
+  const activeGroup = activePane?.group
 
   const closePane = (pane: TermPane): void => {
     // Closing the last pane stops auto-respawn: the panel stays dead until
@@ -254,7 +268,10 @@ export function RightPanel(props: RightPanelProps): ReactNode {
     void api.termKill(pane.id).then(() => {
       setPanes(prev => prev.filter(p => p.key !== pane.key))
       if (activeKey === pane.key) {
-        const next = panes.find(p => p.key !== pane.key)
+        // Prefer a surviving sibling of the closed pane's split group, else
+        // any remaining pane.
+        const sibling = panes.find(p => p.key !== pane.key && p.group === pane.group)
+        const next = sibling ?? panes.find(p => p.key !== pane.key)
         setActiveKey(next?.key ?? null)
       }
     }).catch(() => { /* ignore */ })
@@ -464,53 +481,46 @@ export function RightPanel(props: RightPanelProps): ReactNode {
             </button>
           </div>
           {/* The tab strip, like the VS Code terminal tabs: one tab per open
-              session with a close button; the active tab drives the toolbar. */}
+              session with a close button; the active tab drives the toolbar.
+              Data-tab-renders every pane; the one labeled active is the
+              focused member. Double-click a tab label to rename it. */}
           <div className={css.termTabs}>
             {panes.map(pane => (
-              <span
+              <TermTab
                 key={pane.key}
-                className={pane.key === activeKey ? `${css.termTab} ${css.termTabOn}` : css.termTab}
-                data-session={pane.id}
-              >
-                <button
-                  type="button"
-                  className={css.termTabBtn}
-                  onClick={() => { setActiveKey(pane.key) }}
-                >
-                  {pane.exited ? null : <span className={css.termDot} aria-hidden />}
-                  {pane.label}
-                </button>
-                <button
-                  type="button"
-                  className={css.termTabClose}
-                  aria-label={`关闭${pane.label}`}
-                  onClick={() => { closePane(pane) }}
-                >
-                  ×
-                </button>
-              </span>
+                pane={pane}
+                active={pane.key === activeKey}
+                onSelect={() => { setActiveKey(pane.key) }}
+                onClose={() => { closePane(pane) }}
+                onRename={(label) => { renamePane(pane.key, label) }}
+              />
             ))}
           </div>
           {error === null ? null : <div className={css.termError}>{error}</div>}
-          {/* The split view: each session is a stacked pane (VS Code splits
-              the terminal panel the same way vertically). */}
+          {/* The panes stay mounted (inline-hidden) when not shown so their
+              xterm scrollback and SSE streams survive tab switches; only the
+              active pane's split group renders. */}
           <div className={css.termPanes}>
             {panes.length === 0 ? (
               <div className={css.termStatus}>
                 终端未连接。{path === undefined ? '当前会话没有工作区。' : '点击「新终端」或「启动」打开终端。'}
               </div>
-            ) : panes.map(pane => (
-              <TerminalPane
-                key={pane.key}
-                pane={pane}
-                visible={!collapsed && tab === 'terminal'}
-                active={pane.key === activeKey}
-                onFocus={focusPane}
-                onExit={exitPane}
-                onTermReady={termReady}
-                onTermDispose={termDisposed}
-              />
-            ))}
+            ) : panes.map((pane) => {
+              const shown = activeGroup !== undefined && pane.group === activeGroup
+              return (
+                <TerminalPane
+                  key={pane.key}
+                  pane={pane}
+                  visible={!collapsed && tab === 'terminal' && shown}
+                  active={pane.key === activeKey}
+                  hidden={!shown}
+                  onFocus={focusPane}
+                  onExit={exitPane}
+                  onTermReady={termReady}
+                  onTermDispose={termDisposed}
+                />
+              )
+            })}
           </div>
         </div>
         {tab === 'git' ? (
@@ -601,10 +611,80 @@ interface TermPane {
   key: string
   /** The node session id (`term-N`) all terminal routes address. */
   id: string
-  /** Tab label, e.g. `终端 1`. */
+  /** Split-group id: panes sharing a group display stacked together whenever
+   *  any of them is active, and 分屏 adds a new pane to the active pane's group. */
+  group: string
+  /** Tab label, e.g. `终端 1`; editable by double-clicking the tab. */
   label: string
   /** Whether the session's shell has exited. */
   exited: boolean
+}
+
+/**
+ * One terminal tab in the strip: a select button and a close button, plus an
+ * inline rename box that opens on double-clicking the label (Enter/blur
+ * commit, Escape cancels). The editing state stays local to the tab.
+ */
+function TermTab({ pane, active, onSelect, onClose, onRename }: {
+  pane: TermPane
+  active: boolean
+  onSelect: () => void
+  onClose: () => void
+  onRename: (label: string) => void
+}): ReactNode {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(pane.label)
+  const inputRef = useRef<HTMLInputElement | null>(null)
+
+  const commit = (): void => {
+    const label = draft.trim()
+    if (label !== '' && label !== pane.label) onRename(label)
+    setDraft(pane.label)
+    setEditing(false)
+  }
+
+  return (
+    <span
+      className={active ? `${css.termTab} ${css.termTabOn}` : css.termTab}
+      data-session={pane.id}
+    >
+      {editing ? (
+        <input
+          ref={inputRef}
+          className={css.termTabInput}
+          aria-label={`重命名${pane.label}`}
+          value={draft}
+          autoFocus
+          onFocus={(event) => { event.currentTarget.select() }}
+          onChange={(event) => { setDraft(event.currentTarget.value) }}
+          onBlur={commit}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') commit()
+            else if (event.key === 'Escape') { setDraft(pane.label); setEditing(false) }
+          }}
+        />
+      ) : (
+        <button
+          type="button"
+          className={css.termTabBtn}
+          title="双击重命名"
+          onClick={onSelect}
+          onDoubleClick={() => { setDraft(pane.label); setEditing(true) }}
+        >
+          {pane.exited ? null : <span className={css.termDot} aria-hidden />}
+          {pane.label}
+        </button>
+      )}
+      <button
+        type="button"
+        className={css.termTabClose}
+        aria-label={`关闭${pane.label}`}
+        onClick={onClose}
+      >
+        ×
+      </button>
+    </span>
+  )
 }
 
 /**
@@ -613,10 +693,13 @@ interface TermPane {
  * (serialized so fast typing never reorders), and the surface fits its pane
  * and forwards live resizes — the VS Code terminal engine per pane.
  */
-function TerminalPane({ pane, visible, active, onFocus, onExit, onTermReady, onTermDispose }: {
+function TerminalPane({ pane, visible, active, hidden, onFocus, onExit, onTermReady, onTermDispose }: {
   pane: TermPane
   visible: boolean
   active: boolean
+  /** Hidden panes stay mounted (xterm scrollback and the SSE stream survive)
+   *  but are not shown, like inactive tabs in the VS Code terminal. */
+  hidden: boolean
   onFocus: (key: string) => void
   onExit: (key: string) => void
   onTermReady: (id: string, term: Terminal, fit: FitAddon) => void
@@ -741,7 +824,13 @@ function TerminalPane({ pane, visible, active, onFocus, onExit, onTermReady, onT
   }, [active])
 
   return (
-    <div className={css.termPane} data-term-pane data-session={pane.id}>
+    <div
+      className={css.termPane}
+      data-term-pane
+      data-session={pane.id}
+      data-term-hidden={hidden ? 'true' : undefined}
+      style={hidden ? { display: 'none' } : undefined}
+    >
       {pane.exited ? <div className={css.termStatus}>终端已退出。</div> : null}
       {/* One seamless dark surface, like the VS Code terminal: xterm renders
           the shell's PTY stream and owns the command line; clicking anywhere

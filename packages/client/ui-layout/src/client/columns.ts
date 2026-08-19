@@ -40,7 +40,7 @@ export const DETAILS_DEFAULT = 360
 /** Right-panel drag clamp floor. */
 export const RIGHT_MIN = 300
 /** Right-panel drag clamp ceiling. */
-export const RIGHT_MAX = 520
+export const RIGHT_MAX = 760
 /** Right-panel width before any user drag. */
 export const RIGHT_DEFAULT = 360
 /** Closed right-panel rail: a 40px full-height edge strip (like the sidebar rail). */
