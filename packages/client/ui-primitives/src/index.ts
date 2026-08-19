@@ -44,6 +44,12 @@ export { WebBlock } from './WebBlock.tsx'
 export type { WebBlockProps, WebSearchBlockProps, WebFetchBlockProps, WebSourceView } from './WebBlock.tsx'
 export { CodeBlock } from './markdown/CodeBlock.tsx'
 export type { CodeBlockProps } from './markdown/CodeBlock.tsx'
+export {
+  highlightLines,
+  subscribeGrammarLoaded,
+  grammarLoadCount,
+  type HighlightSpan,
+} from './markdown/highlight.ts'
 export { JsonBlock } from './markdown/JsonBlock.tsx'
 export { MarkdownText } from './markdown/MarkdownText.tsx'
 export type { MarkdownCodeLabels, MarkdownFileMentions } from './markdown/MarkdownText.tsx'

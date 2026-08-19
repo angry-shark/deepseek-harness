@@ -11,9 +11,14 @@
  * (staged / unstaged / untracked). The terminal surface uses a dark
  * editor-style background; the Git groups carry change-count badges.
  */
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import {
+  grammarLoadCount,
+  highlightLines,
+  subscribeGrammarLoaded,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsRuntime, InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pull the slot-declaration and standard-props merges into the type graph.
 import type {} from '@deepseek-ai/dsh-client-runtime/client'
@@ -992,6 +997,7 @@ function DiffPane({ path: filePath, staged, result, busy, onBack }: {
   busy: boolean
   onBack: () => void
 }): ReactNode {
+  const lang = langOfPath(filePath)
   return (
     <div className={css.diffView}>
       <div className={css.diffHead}>
@@ -1014,12 +1020,24 @@ function DiffPane({ path: filePath, staged, result, busy, onBack }: {
           <div className={css.diffBody}>
             {result.diff !== undefined
               ? diffLines(result.diff).map((line, index) => (
-                <div key={index} className={`${css.diffLine} ${DIFF_KIND_CLASS[line.kind]}`}>
-                  {line.text}
+                <div key={index} className={`${css.diffLine} ${DIFF_KIND_CLASS[line.kind]}`} data-diff-kind={line.kind}>
+                  {line.kind === 'add' || line.kind === 'del'
+                    // The `+`/`-` sign stays a stable marker; the code after
+                    // it renders through shiki token colors (plain text when
+                    // the language is unknown or its grammar is still loading).
+                    ? (
+                      <>
+                        <span className={css.diffSign}>{line.text[0]}</span>
+                        <DiffLineRuns code={line.text.slice(1)} lang={lang} fallback={line.text.slice(1)} />
+                      </>
+                    )
+                    : line.text}
                 </div>
               ))
               : (result.content ?? '').split('\n').map((line, index) => (
-                <div key={index} className={`${css.diffLine} ${css.diffAdd}`}>{line}</div>
+                <div key={index} className={`${css.diffLine} ${css.diffAdd}`} data-diff-kind="add">
+                  <DiffLineRuns code={line} lang={lang} fallback={line} />
+                </div>
               ))}
           </div>
         )
@@ -1036,3 +1054,47 @@ const DIFF_KIND_CLASS = {
   meta: css.diffMeta,
   context: css.diffContext,
 } as const
+
+/**
+ * Common file-extension → language-id hints the shared highlighter accepts,
+ * mirroring the read tool's `langFromPath` surface for the diff viewer. A path
+ * whose extension is absent here falls back to plain monospace text, never an
+ * error.
+ */
+const EXT_LANG: Record<string, string> = {
+  ts: 'typescript', tsx: 'typescript', js: 'typescript', jsx: 'typescript', mjs: 'typescript', cjs: 'typescript',
+  py: 'python', rb: 'ruby', go: 'go', rs: 'rust', java: 'java',
+  c: 'c', h: 'c', cpp: 'cpp', hpp: 'cpp', cs: 'csharp', kt: 'kotlin', swift: 'swift', php: 'php',
+  yaml: 'yaml', yml: 'yaml', toml: 'toml', ini: 'ini', json: 'json', jsonc: 'json',
+  md: 'markdown', mdx: 'mdx', html: 'html', css: 'css', scss: 'scss', less: 'less', sql: 'sql',
+}
+
+/** The language-hint id for one file path, or `undefined` for an unknown extension. */
+function langOfPath(filePath: string): string | undefined {
+  const slash = filePath.lastIndexOf('/')
+  const dot = filePath.lastIndexOf('.')
+  if (dot === -1 || dot < slash) return undefined
+  return EXT_LANG[filePath.slice(dot + 1).toLowerCase()]
+}
+
+/**
+ * Render the code of one diff line (the text after its `+`/`-` sign) as
+ * highlighted runs. Re-render via the hook when a lazy grammar loads; an
+ * unknown or not-yet-loaded language renders plain text via `fallback`.
+ */
+function DiffLineRuns({ code, lang, fallback }: {
+  code: string
+  lang: string | undefined
+  fallback: string
+}): ReactNode {
+  // Match ReadBlock's lazy-grammar re-render: the load-counter snapshot is
+  // opaque; its change re-memoizes so a line that showed plain text gains
+  // tokens once its language's grammar registers.
+  const loaded = useSyncExternalStore(subscribeGrammarLoaded, grammarLoadCount, grammarLoadCount)
+  const lines = useMemo(() => {
+    const highlighted = lang === undefined ? undefined : highlightLines(code, lang)
+    return highlighted?.[0]
+  }, [code, lang, loaded])
+  if (lines === undefined) return <>{fallback}</>
+  return lines.map((span, index) => <span key={index} style={span.style}>{span.text}</span>)
+}

@@ -874,16 +874,21 @@ describe('git diff viewer', () => {
     fireEvent.click(await screen.findByRole('button', { name: `查看 ${path} 的修改` }))
   }
 
-  it('shows the unified diff for an unstaged file and colors its lines', async () => {
+  it('shows the unified diff for an unstaged file, colors its lines, and highlights the code', async () => {
     vi.mocked(api.gitDiff).mockResolvedValue({
       ok: true, untracked: false, path: 'un.ts',
-      diff: 'diff --git a/un.ts b/un.ts\nindex 111..222 100644\n--- a/un.ts\n+++ b/un.ts\n@@ -1 +1 @@\n same line\n-old\n+new\n',
+      diff: 'diff --git a/un.ts b/un.ts\nindex 111..222 100644\n--- a/un.ts\n+++ b/un.ts\n@@ -1 +1 @@\n same line\n-old\n+const answer = 42\n',
     })
     await openDiff('un.ts', [{ index: ' ', worktree: 'M', path: 'un.ts' }])
     await waitFor(() => { expect(vi.mocked(api.gitDiff)).toHaveBeenCalledWith('/repo', 'un.ts', false) })
     await waitFor(() => { expect(screen.getByText('diff --git a/un.ts b/un.ts')).toBeTruthy() }, { timeout: 3000 })
-    expect(screen.getByText('+new')).toBeTruthy()
-    expect(screen.getByText('-old')).toBeTruthy()
+    // The add/delete lines carry a sign gutter and shiki-highlighted code.
+    const addLine = [...document.querySelectorAll('[data-diff-kind="add"]')]
+      .find(el => (el as HTMLElement).textContent?.includes('const answer = 42')) as HTMLElement
+    expect(addLine.textContent).toContain('const answer = 42')
+    // The `const` keyword token resolves through a --shiki-* custom property.
+    const keyword = addLine.querySelector('span[style*="--shiki"]')
+    expect(keyword?.textContent).toBe('const')
     expect(screen.getByText('@@ -1 +1 @@')).toBeTruthy()
     expect(screen.getByText('same line')).toBeTruthy()
     // The commit box is hidden while viewing the diff.

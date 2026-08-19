@@ -791,3 +791,14 @@
 .diffContext {
   color: var(--dsw-alias-label-primary);
 }
+
+/* The `+`/`-` marker on a highlighted diff line: a fixed-width gutter column
+   (like GitHub's inline diff) so the syntax-colored code aligns, inheriting
+   the add/delete green/red from the line's own class. */
+.diffSign {
+  display: inline-block;
+  width: 1ch;
+  margin-right: 4px;
+  user-select: none;
+  opacity: 0.9;
+}
