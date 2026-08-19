@@ -134,7 +134,6 @@
   box-sizing: border-box;
   background: var(--dsw-alias-bg-layer-1);
   color: var(--dsw-alias-label-primary);
-  border-left: 1px solid var(--dsw-alias-border-l2);
 }
 
 .rightRail {
@@ -171,6 +170,19 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  /* The rail nests inside the always-mounted panel wrapper; this border-left
+     draws the divider in both the collapsed and expanded states. */
+  border-left: 1px solid var(--dsw-alias-border-l2);
+}
+
+/* The expanded panel body and the terminal tab body stay mounted while
+   hidden (collapsed rail, Git tab active) so the terminal keeps streaming;
+   the hidden state itself is an inline display:none, not a class. */
+.panelBody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .panelHead {
@@ -293,8 +305,8 @@
   background: var(--dsw-alias-state-success-primary);
 }
 
-.termBody,
-.gitBody {
+.gitBody,
+.termTabBody {
   flex: 1;
   min-height: 0;
   display: flex;
@@ -312,50 +324,98 @@
   flex: none;
 }
 
-/* VS Code terminal: a dark editor-style surface holding the shell's own
-   stream (ANSI colors replayed by the renderer) in one scrollable viewport;
-   the command input is an invisible field on the last prompt line with the
-   native caret. */
-.termOut {
+/* VS Code terminal: a dark editor-style surface hosting the xterm.js viewport
+   (the same engine VS Code uses), so clear-screen, cursor motion, colors and
+   scrollback behave like the real terminal. */
+.termHost {
   flex: 1;
-  overflow: auto;
-  padding: 10px 14px;
-  background: var(--dsw-alias-bg-module-platform);
-  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
-  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  min-height: 0;
+  padding: 8px 4px 8px 12px;
+  background: #0f1115;
+  overflow: hidden;
 }
 
-.termLineOut {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+/* Multi-terminal chrome: the tab strip (one pill per open session) and the
+   stacked pane column the split view creates, modeled on the VS Code tabs. */
+.termToolbarSpacer {
+  flex: 1;
+}
+
+.termTabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  flex: none;
+  overflow-x: auto;
+}
+
+.termTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 8px;
+  border-radius: 6px;
   font-size: 12px;
-  line-height: 1.45;
+  color: var(--dsw-alias-label-secondary);
+  flex: none;
+}
+
+.termTabOn {
+  background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary);
-  white-space: pre-wrap;
-  word-break: break-all;
+}
+
+.termTabBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+
+.termTabClose {
+  border: none;
+  background: transparent;
+  padding: 0 3px;
+  color: var(--dsw-alias-label-caption);
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.termTabClose:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.termPanes {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.termPane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.termPane + .termPane {
+  border-top: 1px solid var(--dsw-alias-border-l1);
 }
 
 .termStatus {
   font-size: 12px;
   color: var(--dsw-alias-label-secondary);
-  padding: 4px 0;
-}
-
-.termLine {
-  display: flex;
-  align-items: center;
-  padding: 2px 0 6px;
-}
-
-.termLine input {
-  flex: 1;
-  min-width: 48px;
-  border: none;
-  outline: none;
-  background: transparent;
-  color: var(--dsw-alias-label-primary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
-  caret-color: var(--dsw-alias-state-success-primary);
+  padding: 4px 14px;
 }
 
 .termError {
@@ -366,6 +426,59 @@
 }
 
 /* Git working-tree tab, modeled on the VS Code source-control panel. */
+.gitCommitBox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 4px;
+  flex: none;
+}
+
+.gitCommitInput {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.gitCommitInput:focus {
+  border-color: var(--dsw-alias-brand-primary);
+}
+
+.gitCommitInput::placeholder {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.gitCommitBtn {
+  flex: none;
+  height: 26px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 6px;
+  background: var(--dsw-alias-brand-primary);
+  color: var(--dsw-alias-label-primary-inverted);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.gitCommitBtn:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.gitCommitBtn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .gitSummary {
   display: flex;
   align-items: center;
@@ -434,8 +547,31 @@
 .gitGroupHead {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   padding: 4px 6px;
+}
+
+.gitChevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.gitChevron:hover {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.gitChevronClosed {
+  transform: rotate(-90deg);
 }
 
 .gitGroupTitle {
@@ -449,6 +585,35 @@
 .gitGroupCount {
   font-size: 11px;
   color: var(--dsw-alias-label-tertiary);
+}
+
+.gitHeadActions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.gitActionBtn {
+  font-size: 11px;
+  padding: 2px 5px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.gitActionBtn:hover:not(:disabled) {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.gitActionBtn:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .gitList {
@@ -470,6 +635,19 @@
 
 .gitRow:hover {
   background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.gitRowActions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  visibility: hidden;
+}
+
+.gitRow:hover .gitRowActions,
+.gitRow:focus-within .gitRowActions {
+  visibility: visible;
 }
 
 /* VS Code source-control glyph: a single letter tinted by its status. */
@@ -510,4 +688,93 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The file path is a button opening the modification diff (Codex-style). */
+.gitPathBtn {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.gitPathBtn:hover .gitPath {
+  color: var(--dsw-alias-brand-primary);
+  text-decoration: underline;
+}
+
+/* Git tab modification viewer: a Codex-style read of one changed file. */
+.diffView {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.diffHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 8px;
+  flex: none;
+}
+
+.diffPath {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--dsw-alias-label-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diffBadge {
+  flex: none;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.diffBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.diffLine {
+  white-space: pre;
+  padding: 0 10px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.diffAdd {
+  background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 12%, transparent);
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.diffDel {
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 12%, transparent);
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.diffHunk {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-brand-primary);
+}
+
+.diffMeta {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.diffContext {
+  color: var(--dsw-alias-label-primary);
 }

@@ -16,7 +16,7 @@ import { RightPanel } from './right-panel.tsx'
 export type { GitBranchChipProps } from './git-chip.tsx'
 export type { RightPanelProps } from './right-panel.tsx'
 export { workspacePathOf } from './workspace-path.ts'
-export { api, type GitBranchInfo, type GitBranchesResult, type GitCheckoutResult, type GitStatusInfo, type TermPoll, type TermStatus } from './api.ts'
+export { api, type GitActionResult, type GitBranchInfo, type GitBranchesResult, type GitCheckoutResult, type GitDiffResult, type GitStatusInfo, type TermStatus } from './api.ts'
 
 /** Required services: the slot registry and the layout panel actions. */
 export const inject = ['slots', 'layout']

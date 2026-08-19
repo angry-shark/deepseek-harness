@@ -212,6 +212,13 @@ export interface SubprocessTerminalSpawnSpec {
   rows: number
   /** Initial terminal column count. */
   cols: number
+  /**
+   * Terminal type reported to the child as `TERM`. Defaults to the provider's
+   * plain `dumb` type; interactive consumers (a GUI terminal) pass a real
+   * type such as `xterm-256color` so programs run their full-screen and
+   * clear-screen behavior.
+   */
+  name?: string | undefined
   /** TERM-to-KILL cleanup grace for the complete terminal session. */
   graceMs: number
   /** Cancellation of terminal allocation; a published handle owns its later lifetime. */
@@ -244,6 +251,14 @@ export interface SubprocessTerminalHandle {
    * @param data - text to deliver without implicit newline conversion.
    */
   write(data: string): Promise<void>
+  /**
+   * Resize the terminal to new dimensions. Optional because a remote
+   * substrate may not support live resizing; consumers fall back to the
+   * spawn-time size when it is absent.
+   * @param cols - new column count.
+   * @param rows - new row count.
+   */
+  resize?(cols: number, rows: number): Promise<void>
   /**
    * Inspect the current foreground process group.
    * @returns its id and input-wait fact, or undefined when no foreground group can be resolved.

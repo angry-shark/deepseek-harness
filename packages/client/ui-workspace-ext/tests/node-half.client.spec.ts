@@ -12,15 +12,42 @@ function makeRes(): ServerResponse {
   return res
 }
 
+/** A response capturing SSE frames; the test drives 'close' to disconnect. */
+function makeSseRes(): ServerResponse {
+  const frames: string[] = []
+  const res = { status: 0, body: '', frames, writeHead: () => {}, write: (frame: string) => { frames.push(frame) }, end: () => {} } as unknown as ServerResponse
+  res.writeHead = vi.fn((code: number) => { (res as unknown as { status: number }).status = code }) as never
+  ;(res as unknown as { write: (frame: string) => void }).write = (frame: string) => { frames.push(frame) }
+  return res
+}
+
+/** Parse the SSE frames written to a response into their JSON payloads. */
+function ssePayloads(res: ServerResponse): Array<{ out: string; exited: boolean }> {
+  const frames = (res as unknown as { frames: string[] }).frames
+  return frames
+    .filter(frame => frame.startsWith('data: '))
+    .map(frame => JSON.parse(frame.slice('data: '.length)) as { out: string; exited: boolean })
+}
+
 function makeReq(method: string, url: string, host = '127.0.0.1:52351', body?: Record<string, unknown>): IncomingMessage {
+  const closeListeners: Array<() => void> = []
   const req = { method, url, headers: { host } } as IncomingMessage
   req.on = ((event: string, fn: (...args: unknown[]) => void) => {
     if (event === 'data' && body !== undefined) queueMicrotask(() => { fn(Buffer.from(JSON.stringify(body))) })
     if (event === 'end') queueMicrotask(fn)
+    if (event === 'close') closeListeners.push(fn)
     if (event === 'error' && body === undefined) { /* never fires */ }
     return req
   }) as never
+  ;(req as unknown as { emitClose: () => void }).emitClose = () => {
+    for (const listener of closeListeners) listener()
+  }
   return req
+}
+
+/** Disconnect a stream request, unsubscribing it like a closed socket. */
+function closeStream(req: IncomingMessage): void {
+  ;(req as unknown as { emitClose: () => void }).emitClose()
 }
 
 interface Route { path: string; handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void> }
@@ -46,6 +73,7 @@ function bench(): { ctx: Context; routes: Route[]; disposers: (() => void)[] } {
 function fakeSubprocess(gitResults: Array<{ exitCode: number | null; out?: string; err?: string }>): SubprocessRuntime {
   let spawnCount = 0
   let terminal: FakeTerminal | undefined
+  const terminals: FakeTerminal[] = []
   const subprocess = {
     resolveExecutable: vi.fn(async (cmd: string) => (cmd === 'git' ? '/usr/bin/git' : cmd)),
     spawn: vi.fn((spec: { argv: string[] }) => {
@@ -61,19 +89,23 @@ function fakeSubprocess(gitResults: Array<{ exitCode: number | null; out?: strin
       }
     }),
     spawnTerminal: vi.fn(async (spec: unknown) => {
-      terminal = new FakeTerminal()
+      const t = new FakeTerminal()
+      terminal = t
+      terminals.push(t)
       void spec
-      return terminal
+      return t
     }),
   } as unknown as SubprocessRuntime
-  const handle = { current: () => terminal }
+  const handle = { current: () => terminal, all: () => terminals }
   Object.defineProperty(handle, 'current', { get: () => terminal })
+  Object.defineProperty(handle, 'all', { get: () => terminals })
   return subprocess
 }
 
 class FakeTerminal {
   pid = 1
   writes: string[] = []
+  resizes: Array<{ cols: number; rows: number }> = []
   terminated = false
   private listeners: Record<string, Array<(payload?: unknown) => void>> = {}
   readonly output = {
@@ -91,6 +123,7 @@ class FakeTerminal {
     this.done = new Promise((resolve, reject) => { this.resolveDone = resolve; this.rejectDone = reject })
   }
   async write(data: string): Promise<void> { this.writes.push(data) }
+  async resize(cols: number, rows: number): Promise<void> { this.resizes.push({ cols, rows }) }
   async inspectForeground(): Promise<{ processGroupId: number; inputWaiting: boolean } | undefined> { return undefined }
   async signalForeground(): Promise<number> { return 0 }
   async terminate(): Promise<void> {
@@ -120,11 +153,14 @@ describe('workspace-ext node half', () => {
       '/api/workspace-ext/branch',
       '/api/workspace-ext/branches',
       '/api/workspace-ext/checkout',
+      '/api/workspace-ext/diff',
+      '/api/workspace-ext/git/action',
       '/api/workspace-ext/status',
       '/api/workspace-ext/term/kill',
-      '/api/workspace-ext/term/poll',
+      '/api/workspace-ext/term/resize',
       '/api/workspace-ext/term/spawn',
       '/api/workspace-ext/term/status',
+      '/api/workspace-ext/term/stream',
       '/api/workspace-ext/term/write',
     ])
   })
@@ -341,6 +377,126 @@ describe('workspace-ext node half', () => {
     expect((res6 as unknown as { status: number }).status).toBe(400)
   })
 
+  it('runs stage/unstage/discard git actions with allowlisted argv', async () => {
+    const { ctx, routes } = bench()
+    const subprocess = fakeSubprocess([{ exitCode: 0 }])
+    ;(ctx as unknown as Record<string, unknown>)['svc:subprocess'] = subprocess
+    const route = byPath(routes, '/api/workspace-ext/git/action')
+    const spawnSpecs = (subprocess.spawn as ReturnType<typeof vi.fn>).mock.calls as Array<[{ argv: string[] }]>
+
+    // Stage specific files and all files.
+    await route.handler(makeReq('POST', '/api/workspace-ext/git/action', '127.0.0.1:52351', { path: '/repo', action: 'stage', files: ['a.ts', 'b.ts'] }), makeRes())
+    expect(spawnSpecs[0]![0].argv).toEqual(['/usr/bin/git', 'add', '--', 'a.ts', 'b.ts'])
+    await route.handler(makeReq('POST', '/api/workspace-ext/git/action', '127.0.0.1:52351', { path: '/repo', action: 'stage' }), makeRes())
+    expect(spawnSpecs[1]![0].argv).toEqual(['/usr/bin/git', 'add', '-A'])
+
+    // Unstage specific files and all files.
+    await route.handler(makeReq('POST', '/api/workspace-ext/git/action', '127.0.0.1:52351', { path: '/repo', action: 'unstage', files: ['a.ts'] }), makeRes())
+    expect(spawnSpecs[2]![0].argv).toEqual(['/usr/bin/git', 'reset', '--', 'a.ts'])
+    await route.handler(makeReq('POST', '/api/workspace-ext/git/action', '127.0.0.1:52351', { path: '/repo', action: 'unstage' }), makeRes())
+    expect(spawnSpecs[3]![0].argv).toEqual(['/usr/bin/git', 'reset'])
+
+    // Discard worktree changes for one file and for all files.
+    await route.handler(makeReq('POST', '/api/workspace-ext/git/action', '127.0.0.1:52351', { path: '/repo', action: 'discard', files: ['a.ts'] }), makeRes())
+    expect(spawnSpecs[4]![0].argv).toEqual(['/usr/bin/git', 'checkout', '--', 'a.ts'])
+    await route.handler(makeReq('POST', '/api/workspace-ext/git/action', '127.0.0.1:52351', { path: '/repo', action: 'discard' }), makeRes())
+    expect(spawnSpecs[5]![0].argv).toEqual(['/usr/bin/git', 'checkout', '--', '.'])
+
+    // Discard staged changes restores from HEAD.
+    await route.handler(makeReq('POST', '/api/workspace-ext/git/action', '127.0.0.1:52351', { path: '/repo', action: 'discard', files: ['a.ts'], staged: true }), makeRes())
+    expect(spawnSpecs[6]![0].argv).toEqual(['/usr/bin/git', 'checkout', 'HEAD', '--', 'a.ts'])
+    await route.handler(makeReq('POST', '/api/workspace-ext/git/action', '127.0.0.1:52351', { path: '/repo', action: 'discard', staged: true }), makeRes())
+    expect(spawnSpecs[7]![0].argv).toEqual(['/usr/bin/git', 'checkout', 'HEAD', '--', '.'])
+  })
+
+  it('commits staged changes and smart-commits everything when asked', async () => {
+    const { ctx, routes } = bench()
+    const subprocess = fakeSubprocess([{ exitCode: 0, out: '[main abc123] msg\n' }])
+    ;(ctx as unknown as Record<string, unknown>)['svc:subprocess'] = subprocess
+    const route = byPath(routes, '/api/workspace-ext/git/action')
+    const spawnSpecs = (subprocess.spawn as ReturnType<typeof vi.fn>).mock.calls as Array<[{ argv: string[] }]>
+
+    const res = makeRes()
+    await route.handler(makeReq('POST', '/api/workspace-ext/git/action', '127.0.0.1:52351', { path: '/repo', action: 'commit', message: 'fix: x' }), res)
+    expect(bodyOf(res).ok).toBe(true)
+    expect(spawnSpecs[0]![0].argv).toEqual(['/usr/bin/git', 'commit', '-m', 'fix: x'])
+
+    // Smart commit (all=true) stages everything first.
+    await route.handler(makeReq('POST', '/api/workspace-ext/git/action', '127.0.0.1:52351', { path: '/repo', action: 'commit', message: '  all of it  ', all: true }), makeRes())
+    expect(spawnSpecs[1]![0].argv).toEqual(['/usr/bin/git', 'add', '-A'])
+    expect(spawnSpecs[2]![0].argv).toEqual(['/usr/bin/git', 'commit', '-m', 'all of it'])
+  })
+
+  it('rejects empty commit messages and unknown actions with 400s', async () => {
+    const { ctx, routes } = bench()
+    ;(ctx as unknown as Record<string, unknown>)['svc:subprocess'] = fakeSubprocess([])
+    const route = byPath(routes, '/api/workspace-ext/git/action')
+    const res = makeRes()
+    await route.handler(makeReq('POST', '/api/workspace-ext/git/action', '127.0.0.1:52351', { path: '/repo', action: 'commit', message: '   ' }), res)
+    expect((res as unknown as { status: number }).status).toBe(400)
+
+    const res2 = makeRes()
+    await route.handler(makeReq('POST', '/api/workspace-ext/git/action', '127.0.0.1:52351', { path: '/repo', action: 'cherry-pick' }), res2)
+    expect((res2 as unknown as { status: number }).status).toBe(400)
+
+    const res3 = makeRes()
+    await route.handler(makeReq('POST', '/api/workspace-ext/git/action', '127.0.0.1:52351', { path: '', action: 'stage' }), res3)
+    expect((res3 as unknown as { status: number }).status).toBe(400)
+
+    const res4 = makeRes()
+    await route.handler(makeReq('POST', '/api/workspace-ext/git/action', '127.0.0.1:52351', {}), res4)
+    expect((res4 as unknown as { status: number }).status).toBe(400)
+  })
+
+  it('surfaces git action failures and subprocess rejections', async () => {
+    const { ctx, routes } = bench()
+    const subprocess = fakeSubprocess([
+      { exitCode: 1, err: 'fatal: pathspec did not match' },
+      { exitCode: 1, out: 'nothing to commit' },
+      { exitCode: 1 },
+      { exitCode: 1 }, // git add fails during smart commit
+      { exitCode: 0 }, // git add succeeds on the retry
+      { exitCode: 1 }, // git commit fails with empty streams
+    ])
+    ;(ctx as unknown as Record<string, unknown>)['svc:subprocess'] = subprocess
+    const route = byPath(routes, '/api/workspace-ext/git/action')
+
+    const res = makeRes()
+    await route.handler(makeReq('POST', '/api/workspace-ext/git/action', '127.0.0.1:52351', { path: '/repo', action: 'stage', files: ['nope'] }), res)
+    expect(bodyOf(res).error).toContain('pathspec')
+
+    const res2 = makeRes()
+    await route.handler(makeReq('POST', '/api/workspace-ext/git/action', '127.0.0.1:52351', { path: '/repo', action: 'commit', message: 'x' }), res2)
+    expect(bodyOf(res2).error).toBe('nothing to commit')
+
+    const res3 = makeRes()
+    await route.handler(makeReq('POST', '/api/workspace-ext/git/action', '127.0.0.1:52351', { path: '/repo', action: 'unstage' }), res3)
+    expect(bodyOf(res3).error).toBe('git exited 1')
+
+    // Smart-commit staging failure surfaces the git add error.
+    const resAdd = makeRes()
+    await route.handler(makeReq('POST', '/api/workspace-ext/git/action', '127.0.0.1:52351', { path: '/repo', action: 'commit', message: 'x', all: true }), resAdd)
+    expect(bodyOf(resAdd).error).toBe('git add exited 1')
+
+    // Commit failure with neither stream falls back to the template.
+    const resTpl = makeRes()
+    await route.handler(makeReq('POST', '/api/workspace-ext/git/action', '127.0.0.1:52351', { path: '/repo', action: 'commit', message: 'x', all: true }), resTpl)
+    expect(bodyOf(resTpl).error).toBe('git commit exited 1')
+
+    const rejectSubprocess = {
+      resolveExecutable: vi.fn(async () => '/usr/bin/git'),
+      spawn: vi.fn(() => ({ done: Promise.reject(new Error('git action boom')), collected: {} })),
+    } as unknown as SubprocessRuntime
+    ;(ctx as unknown as Record<string, unknown>)['svc:subprocess'] = rejectSubprocess
+    const res4 = makeRes()
+    await route.handler(makeReq('POST', '/api/workspace-ext/git/action', '127.0.0.1:52351', { path: '/repo', action: 'stage' }), res4)
+    expect(bodyOf(res4).error).toBe('git action boom')
+
+    const res5 = makeRes()
+    await route.handler(makeReq('POST', '/api/workspace-ext/git/action', '127.0.0.1:52351', { path: '/repo', action: 'commit', message: 'x', all: true }), res5)
+    expect(bodyOf(res5).error).toBe('git action boom')
+  })
+
   it('parses detached, unborn, and plain branch headers', () => {
     expect(parseGitStatus('## HEAD (no branch)\n M a\n')).toEqual({
       branch: null, ahead: 0, behind: 0,
@@ -373,16 +529,133 @@ describe('workspace-ext node half', () => {
     })
   })
 
-  it('spawns, writes, polls, kills and reports the terminal', async () => {
+  it('serves worktree and staged diffs, and untracked content for new files', async () => {
+    const { ctx, routes } = bench()
+    const subprocess = fakeSubprocess([
+      { exitCode: 0, out: 'diff --git a/a.ts b/a.ts\n@@ -1 +1 @@\n-old\n+new\n' },
+    ])
+    ;(ctx as unknown as Record<string, unknown>)['svc:subprocess'] = subprocess
+    const resolveFs = vi.fn(async (p: string, opts?: { cwd?: string }) => ({ key: `${opts?.cwd ?? ''}/${p}`, path: `${opts?.cwd ?? ''}/${p}` }))
+    const fs = {
+      resolve: resolveFs,
+      readText: vi.fn(async () => 'brand new file\nline two\n'),
+    } as unknown as FileSystem
+    ;(ctx as unknown as Record<string, unknown>)['svc:fs'] = fs
+    const route = byPath(routes, '/api/workspace-ext/diff')
+
+    // Unstaged diff: `git diff -- file`.
+    const res = makeRes()
+    await route.handler(makeReq('GET', '/api/workspace-ext/diff?path=%2Frepo&file=a.ts&staged=0'), res)
+    const body = bodyOf(res)
+    expect(body.ok).toBe(true)
+    const firstArgv = ((subprocess.spawn as ReturnType<typeof vi.fn>).mock.calls[0]![0] as { argv: string[] }).argv
+    expect(firstArgv).toEqual(['/usr/bin/git', 'diff', '--', 'a.ts'])
+    expect(body.diff).toContain('@@ -1 +1 @@')
+    expect(body.untracked).toBe(false)
+
+    // Staged diff: `git diff --cached -- file`.
+    const resStaged = makeRes()
+    await route.handler(makeReq('GET', '/api/workspace-ext/diff?path=%2Frepo&file=a.ts&staged=1'), resStaged)
+    expect(bodyOf(resStaged).ok).toBe(true)
+    const stagedArgv = ((subprocess.spawn as ReturnType<typeof vi.fn>).mock.calls[1]![0] as { argv: string[] }).argv
+    expect(stagedArgv).toEqual(['/usr/bin/git', 'diff', '--cached', '--', 'a.ts'])
+
+    // An untracked file has no diff output: the route falls back to reading
+    // the current content through the filesystem.
+    ;(subprocess.spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() => ({
+      done: Promise.resolve({ exitCode: 0, signal: null }),
+      collected: {
+        stdout: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) },
+        stderr: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) },
+      },
+    }))
+    const resNew = makeRes()
+    await route.handler(makeReq('GET', '/api/workspace-ext/diff?path=%2Frepo&file=new.txt&staged=0'), resNew)
+    const newBody = bodyOf(resNew)
+    expect(newBody.untracked).toBe(true)
+    expect(newBody.content).toBe('brand new file\nline two\n')
+    expect(resolveFs).toHaveBeenCalledWith('new.txt', { cwd: '/repo' })
+
+    // Missing parameters → 400; git failure surfaces its message.
+    const resMissing = makeRes()
+    await route.handler(makeReq('GET', '/api/workspace-ext/diff?path=%2Frepo'), resMissing)
+    expect((resMissing as unknown as { status: number }).status).toBe(400)
+    const resMissingRoot = makeRes()
+    await route.handler(makeReq('GET', '/api/workspace-ext/diff?file=a.ts&staged=0'), resMissingRoot)
+    expect((resMissingRoot as unknown as { status: number }).status).toBe(400)
+    ;(subprocess.spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() => ({
+      done: Promise.resolve({ exitCode: 128, signal: null }),
+      collected: {
+        stdout: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) },
+        stderr: { readFrom: () => ({ text: 'fatal: not a git repo', nextOffset: 0, lossy: false }) },
+      },
+    }))
+    const resFail = makeRes()
+    await route.handler(makeReq('GET', '/api/workspace-ext/diff?path=%2Frepo&file=a.ts&staged=0'), resFail)
+    expect(bodyOf(resFail).error).toBe('fatal: not a git repo')
+
+    // A git failure with empty streams falls back to the exit code message.
+    ;(subprocess.spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() => ({
+      done: Promise.resolve({ exitCode: 129, signal: null }),
+      collected: {
+        stdout: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) },
+        stderr: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) },
+      },
+    }))
+    const resCode = makeRes()
+    await route.handler(makeReq('GET', '/api/workspace-ext/diff?path=%2Frepo&file=a.ts&staged=0'), resCode)
+    expect(bodyOf(resCode).error).toBe('git diff exited 129')
+
+    // A git failure with only stdout prefers it over the exit code.
+    ;(subprocess.spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() => ({
+      done: Promise.resolve({ exitCode: 130, signal: null }),
+      collected: {
+        stdout: { readFrom: () => ({ text: 'stdout noise', nextOffset: 0, lossy: false }) },
+        stderr: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) },
+      },
+    }))
+    const resOut = makeRes()
+    await route.handler(makeReq('GET', '/api/workspace-ext/diff?path=%2Frepo&file=a.ts&staged=0'), resOut)
+    expect(bodyOf(resOut).error).toBe('stdout noise')
+
+    // Untracked fallback without the filesystem service reports the gap.
+    ;(ctx as unknown as Record<string, unknown>)['svc:subprocess'] = subprocess
+    ;(ctx as unknown as Record<string, unknown>)['svc:fs'] = undefined
+    ;(subprocess.spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() => ({
+      done: Promise.resolve({ exitCode: 0, signal: null }),
+      collected: {
+        stdout: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) },
+        stderr: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) },
+      },
+    }))
+    const resNoFs = makeRes()
+    await route.handler(makeReq('GET', '/api/workspace-ext/diff?path=%2Frepo&file=new.txt&staged=0'), resNoFs)
+    expect(bodyOf(resNoFs).error).toBe('filesystem service unavailable')
+  })
+
+  it('spawns, streams, writes, kills and reports the terminal', async () => {
     const { ctx, routes } = bench()
     const subprocess = fakeSubprocess([])
     ;(ctx as unknown as Record<string, unknown>)['svc:subprocess'] = subprocess
     const spawnRoute = byPath(routes, '/api/workspace-ext/term/spawn')
+    const streamRoute = byPath(routes, '/api/workspace-ext/term/stream')
 
-    // Spawn success.
+    // Spawn success returns a session id; the spec carries a real terminal
+    // type so `clear` works, like VS Code.
     const res = makeRes()
     await spawnRoute.handler(makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo' }), res)
-    expect(bodyOf(res).ok).toBe(true)
+    const spawnBody = bodyOf(res)
+    expect(spawnBody.ok).toBe(true)
+    expect(spawnBody.id).toBe('term-1')
+    const expectedShell = process.env.SHELL !== undefined && process.env.SHELL !== '' ? process.env.SHELL : '/bin/zsh'
+    expect((subprocess.spawnTerminal as ReturnType<typeof vi.fn>).mock.calls[0]![0]).toEqual({
+      argv: [expectedShell],
+      cwd: '/repo',
+      name: 'xterm-256color',
+      rows: 30,
+      cols: 120,
+      graceMs: 3000,
+    })
     const terminal = (subprocess.spawnTerminal as ReturnType<typeof vi.fn>).mock.results[0]!.value as Promise<FakeTerminal>
 
     // Spawn missing cwd → 400.
@@ -404,52 +677,224 @@ describe('workspace-ext node half', () => {
     await spawnRoute.handler(makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo' }), resNone)
     expect(bodyOf(resNone).error).toBe('subprocess service unavailable')
 
-    // Terminal output accumulates, is capped, and polls incrementally.
+    // Output arriving before any stream is open accumulates in the buffer,
+    // is capped, and drains into the first stream connection.
     const t = await terminal
-    const bigChunk = Buffer.from('x'.repeat(70000))
-    t.output.emit('data', bigChunk)
-    const resPoll = makeRes()
-    await byPath(routes, '/api/workspace-ext/term/poll').handler(makeReq('GET', '/api/workspace-ext/term/poll'), resPoll)
-    const poll = bodyOf(resPoll)
-    expect(poll.ok).toBe(true)
-    expect((poll.out as string).length).toBe(65536)
-    expect(poll.exited).toBe(false)
+    t.output.emit('data', Buffer.from('prompt$ '))
+    t.output.emit('data', Buffer.from('x'.repeat(70000)))
+    const reqStream = makeReq('GET', '/api/workspace-ext/term/stream?session=term-1')
+    const resStream = makeSseRes()
+    await streamRoute.handler(reqStream, resStream)
+    const drained = ssePayloads(resStream)
+    expect(drained.length).toBe(1)
+    expect(drained[0]!.out.length).toBe(65536)
+    expect(drained[0]!.exited).toBe(false)
 
-    // Write delivers text; then the terminal exits via done.
+    // Live output forwards to the connected stream immediately.
+    t.output.emit('data', Buffer.from('live-chunk'))
+    await new Promise(resolve => setImmediate(resolve))
+    const live = ssePayloads(resStream)
+    expect(live[live.length - 1]!.out).toBe('live-chunk')
+
+    // Write delivers text; then the terminal exits via done and the stream
+    // receives the exit signal.
     const resWrite = makeRes()
     await byPath(routes, '/api/workspace-ext/term/write').handler(
-      makeReq('POST', '/api/workspace-ext/term/write', '127.0.0.1:52351', { text: 'ls\n' }), resWrite)
+      makeReq('POST', '/api/workspace-ext/term/write', '127.0.0.1:52351', { session: 'term-1', text: 'ls\n' }), resWrite)
     expect(bodyOf(resWrite).ok).toBe(true)
     expect(t.writes).toEqual(['ls\n'])
 
     t.resolveDone({ code: 0 })
     await t.done
-    const resPoll2 = makeRes()
-    await byPath(routes, '/api/workspace-ext/term/poll').handler(makeReq('GET', '/api/workspace-ext/term/poll'), resPoll2)
-    expect(bodyOf(resPoll2).exited).toBe(true)
+    await new Promise(resolve => setImmediate(resolve))
+    const exitedFrames = ssePayloads(resStream)
+    expect(exitedFrames[exitedFrames.length - 1]!.exited).toBe(true)
 
     // Status reflects liveness.
     const resStatus = makeRes()
-    await byPath(routes, '/api/workspace-ext/term/status').handler(makeReq('GET', '/api/workspace-ext/term/status'), resStatus)
+    await byPath(routes, '/api/workspace-ext/term/status').handler(makeReq('GET', '/api/workspace-ext/term/status?session=term-1'), resStatus)
     const status = bodyOf(resStatus)
     expect(status.ok).toBe(true)
     expect(status.running).toBe(true)
 
-    // Kill terminates and clears.
+    // A stream opened against a dead terminal answers with the exit signal
+    // and closes instead of hanging.
+    const resDead = makeSseRes()
+    await streamRoute.handler(makeReq('GET', '/api/workspace-ext/term/stream?session=term-1'), resDead)
+    expect(ssePayloads(resDead)[0]!.exited).toBe(true)
+
+    // An unknown session stream answers the same way.
+    const resGhost = makeSseRes()
+    await streamRoute.handler(makeReq('GET', '/api/workspace-ext/term/stream?session=term-99'), resGhost)
+    expect(ssePayloads(resGhost)[0]!.exited).toBe(true)
+
+    // Kill terminates and clears, notifying live streams out-of-band.
+    const reqStream2 = makeReq('GET', '/api/workspace-ext/term/stream?session=term-1')
+    const resStream2 = makeSseRes()
+    await streamRoute.handler(reqStream2, resStream2)
     const resKill = makeRes()
     await byPath(routes, '/api/workspace-ext/term/kill').handler(
-      makeReq('POST', '/api/workspace-ext/term/kill', '127.0.0.1:52351', {}), resKill)
+      makeReq('POST', '/api/workspace-ext/term/kill', '127.0.0.1:52351', { session: 'term-1' }), resKill)
     expect(bodyOf(resKill).ok).toBe(true)
     expect(t.terminated).toBe(true)
+    await new Promise(resolve => setImmediate(resolve))
+    const killFrames = ssePayloads(resStream2)
+    expect(killFrames[killFrames.length - 1]!.exited).toBe(true)
     const resStatus2 = makeRes()
-    await byPath(routes, '/api/workspace-ext/term/status').handler(makeReq('GET', '/api/workspace-ext/term/status'), resStatus2)
-    expect(bodyOf(resStatus2).running).toBe(false)
+    await byPath(routes, '/api/workspace-ext/term/status').handler(makeReq('GET', '/api/workspace-ext/term/status?session=term-1'), resStatus2)
+    expect(bodyOf(resStatus2).error).toBe('unknown session')
 
-    // Write with no terminal → error.
+    // Write with an unknown session → error.
     const resNoTerm = makeRes()
     await byPath(routes, '/api/workspace-ext/term/write').handler(
-      makeReq('POST', '/api/workspace-ext/term/write', '127.0.0.1:52351', { text: 'x' }), resNoTerm)
-    expect(bodyOf(resNoTerm).error).toBe('no terminal running')
+      makeReq('POST', '/api/workspace-ext/term/write', '127.0.0.1:52351', { session: 'term-1', text: 'x' }), resNoTerm)
+    expect(bodyOf(resNoTerm).error).toBe('unknown session')
+
+    // Killing an unknown or non-string session is an error too.
+    const resKillGhost = makeRes()
+    await byPath(routes, '/api/workspace-ext/term/kill').handler(
+      makeReq('POST', '/api/workspace-ext/term/kill', '127.0.0.1:52351', { session: 'term-99' }), resKillGhost)
+    expect(bodyOf(resKillGhost).error).toBe('unknown session')
+    const resKillBad = makeRes()
+    await byPath(routes, '/api/workspace-ext/term/kill').handler(
+      makeReq('POST', '/api/workspace-ext/term/kill', '127.0.0.1:52351', { session: 123 }), resKillBad)
+    expect(bodyOf(resKillBad).error).toBe('unknown session')
+
+    // Disconnect the live subscribers so no test leaks into the next one.
+    closeStream(reqStream)
+    closeStream(reqStream2)
+  })
+
+  it('runs several sessions side by side and respawns one in place', async () => {
+    const { ctx, routes } = bench()
+    const subprocess = fakeSubprocess([])
+    ;(ctx as unknown as Record<string, unknown>)['svc:subprocess'] = subprocess
+    const spawnRoute = byPath(routes, '/api/workspace-ext/term/spawn')
+    const streamRoute = byPath(routes, '/api/workspace-ext/term/stream')
+
+    // Two GUI terminals = two independent sessions (split panes).
+    const resA0 = makeRes()
+    await spawnRoute.handler(makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo' }), resA0)
+    const idA = bodyOf(resA0).id as string
+    const resB = makeRes()
+    await spawnRoute.handler(makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo' }), resB)
+    const idB = bodyOf(resB).id as string
+    expect(idB).not.toBe(idA)
+    const all = (subprocess.spawnTerminal as ReturnType<typeof vi.fn>).mock.results
+    const terminalA = await all[0]!.value as Promise<FakeTerminal>
+    const terminalB = await all[1]!.value as Promise<FakeTerminal>
+
+    // Each session streams its own output.
+    const reqA = makeReq('GET', `/api/workspace-ext/term/stream?session=${idA}`)
+    const resA = makeSseRes()
+    await streamRoute.handler(reqA, resA)
+    ;(await terminalA).output.emit('data', Buffer.from('A-out'))
+    await new Promise(resolve => setImmediate(resolve))
+    expect(ssePayloads(resA)[0]!.out).toBe('A-out')
+    ;(await terminalB).output.emit('data', Buffer.from('B-out'))
+    await new Promise(resolve => setImmediate(resolve))
+    expect(ssePayloads(resA).length).toBe(1)
+
+    // Writes address the right session.
+    const resWriteB = makeRes()
+    await byPath(routes, '/api/workspace-ext/term/write').handler(
+      makeReq('POST', '/api/workspace-ext/term/write', '127.0.0.1:52351', { session: idB, text: 'hi\n' }), resWriteB)
+    expect(bodyOf(resWriteB).ok).toBe(true)
+    expect((await terminalB).writes).toEqual(['hi\n'])
+    expect((await terminalA).writes).toEqual([])
+
+    // Respawn B in place: same id, a fresh handle, subscribers intact.
+    const oldHandle = await terminalB
+    const resRespawn = makeRes()
+    await spawnRoute.handler(makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo', session: idB }), resRespawn)
+    expect(bodyOf(resRespawn).id).toBe(idB)
+    expect(oldHandle.terminated).toBe(true)
+    const newHandle = await all[2]!.value as Promise<FakeTerminal>
+    ;(await newHandle).output.emit('data', Buffer.from('B2'))
+    await new Promise(resolve => setImmediate(resolve))
+    expect(ssePayloads(resA).length).toBe(1) // A's stream untouched
+    const reqB2 = makeReq('GET', `/api/workspace-ext/term/stream?session=${idB}`)
+    const resB2 = makeSseRes()
+    await streamRoute.handler(reqB2, resB2)
+    expect(ssePayloads(resB2)[0]!.out).toBe('B2')
+
+    // The old handle's exit must not latch onto the respawned session.
+    oldHandle.resolveDone({ code: 0 })
+    await oldHandle.done
+    const resStatus = makeRes()
+    await byPath(routes, '/api/workspace-ext/term/status').handler(makeReq('GET', `/api/workspace-ext/term/status?session=${idB}`), resStatus)
+    expect(bodyOf(resStatus).exited).toBe(false)
+
+    closeStream(reqA)
+    closeStream(reqB2)
+  })
+
+  it('resizes the running terminal and rejects bad dimensions', async () => {
+    const { ctx, routes } = bench()
+    const subprocess = fakeSubprocess([])
+    ;(ctx as unknown as Record<string, unknown>)['svc:subprocess'] = subprocess
+    const resizeRoute = byPath(routes, '/api/workspace-ext/term/resize')
+
+    // Unknown session → error.
+    const resNone = makeRes()
+    await resizeRoute.handler(makeReq('POST', '/api/workspace-ext/term/resize', '127.0.0.1:52351', { session: 'term-9', cols: 80, rows: 24 }), resNone)
+    expect(bodyOf(resNone).error).toBe('unknown session')
+
+    // Spawn, then a valid resize forwards to the handle.
+    const resSpawn = makeRes()
+    await byPath(routes, '/api/workspace-ext/term/spawn').handler(
+      makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo' }), resSpawn)
+    const idA = bodyOf(resSpawn).id as string
+    const terminal = await ((subprocess.spawnTerminal as ReturnType<typeof vi.fn>).mock.results[0]!.value as Promise<FakeTerminal>)
+    const res = makeRes()
+    await resizeRoute.handler(makeReq('POST', '/api/workspace-ext/term/resize', '127.0.0.1:52351', { session: idA, cols: 96, rows: 40 }), res)
+    expect(bodyOf(res).ok).toBe(true)
+    expect(terminal.resizes).toEqual([{ cols: 96, rows: 40 }])
+
+    // Degenerate or missing dimensions → 400.
+    for (const bad of [{ cols: 1, rows: 24 }, { cols: 80, rows: 0 }, { cols: 'x', rows: 24 }, {}]) {
+      const resBad = makeRes()
+      await resizeRoute.handler(makeReq('POST', '/api/workspace-ext/term/resize', '127.0.0.1:52351', { session: idA, ...bad }), resBad)
+      expect((resBad as unknown as { status: number }).status).toBe(400)
+    }
+
+    // A handle without resize support reports the gap.
+    ;(subprocess.spawnTerminal as ReturnType<typeof vi.fn>).mockResolvedValueOnce(Object.assign(new FakeTerminal(), { resize: undefined }))
+    const resSpawn2 = makeRes()
+    await byPath(routes, '/api/workspace-ext/term/spawn').handler(
+      makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo' }), resSpawn2)
+    const idB = bodyOf(resSpawn2).id as string
+    const resUnsupported = makeRes()
+    await resizeRoute.handler(makeReq('POST', '/api/workspace-ext/term/resize', '127.0.0.1:52351', { session: idB, cols: 80, rows: 24 }), resUnsupported)
+    expect(bodyOf(resUnsupported).error).toBe('resize unsupported')
+
+    // A rejecting resize surfaces its message.
+    ;(subprocess.spawnTerminal as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      Object.assign(new FakeTerminal(), {
+        resize: async (): Promise<void> => { throw new Error('pty gone') },
+      }),
+    )
+    const resSpawn3 = makeRes()
+    await byPath(routes, '/api/workspace-ext/term/spawn').handler(
+      makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo' }), resSpawn3)
+    const idC = bodyOf(resSpawn3).id as string
+    const resReject = makeRes()
+    await resizeRoute.handler(makeReq('POST', '/api/workspace-ext/term/resize', '127.0.0.1:52351', { session: idC, cols: 80, rows: 24 }), resReject)
+    expect(bodyOf(resReject).error).toBe('pty gone')
+
+    // A non-Error rejection payload falls back to String().
+    ;(subprocess.spawnTerminal as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      Object.assign(new FakeTerminal(), {
+        resize: async (): Promise<void> => { throw 'plain resize boom' },
+      }),
+    )
+    const resSpawn4 = makeRes()
+    await byPath(routes, '/api/workspace-ext/term/spawn').handler(
+      makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo' }), resSpawn4)
+    const idD = bodyOf(resSpawn4).id as string
+    const resRejectPlain = makeRes()
+    await resizeRoute.handler(makeReq('POST', '/api/workspace-ext/term/resize', '127.0.0.1:52351', { session: idD, cols: 80, rows: 24 }), resRejectPlain)
+    expect(bodyOf(resRejectPlain).error).toBe('plain resize boom')
   })
 
   it('keeps a replaced terminal from marking the current one exited', async () => {
@@ -467,6 +912,7 @@ describe('workspace-ext node half', () => {
     // A second spawn (a fresh page auto-connect) replaces the current handle.
     const resB = makeRes()
     await spawnRoute.handler(makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo' }), resB)
+    const idB = bodyOf(resB).id as string
     const terminalBPromise = (subprocess.spawnTerminal as ReturnType<typeof vi.fn>).mock.results[1]!.value as Promise<FakeTerminal>
     const terminalB = await terminalBPromise
 
@@ -474,22 +920,25 @@ describe('workspace-ext node half', () => {
     terminalA.resolveDone({ code: 0 })
     await terminalA.done
     terminalA.output.emit('end')
-    const resPoll = makeRes()
-    await byPath(routes, '/api/workspace-ext/term/poll').handler(makeReq('GET', '/api/workspace-ext/term/poll'), resPoll)
-    expect(bodyOf(resPoll).exited).toBe(false)
+    const reqStream = makeReq('GET', `/api/workspace-ext/term/stream?session=${idB}`)
+    const resStream = makeSseRes()
+    await byPath(routes, '/api/workspace-ext/term/stream').handler(reqStream, resStream)
+    // A live connection starts silent: no buffered output, no exit signal.
+    expect(ssePayloads(resStream)).toEqual([])
 
     // The current session's stream ending marks it exited.
     terminalB.output.emit('end')
-    const resPollMid = makeRes()
-    await byPath(routes, '/api/workspace-ext/term/poll').handler(makeReq('GET', '/api/workspace-ext/term/poll'), resPollMid)
-    expect(bodyOf(resPollMid).exited).toBe(true)
+    await new Promise(resolve => setImmediate(resolve))
+    const framesMid = ssePayloads(resStream)
+    expect(framesMid[framesMid.length - 1]!.exited).toBe(true)
 
     // The current session's done resolution keeps it exited.
     terminalB.resolveDone({ code: 0 })
     await terminalB.done
-    const resPoll2 = makeRes()
-    await byPath(routes, '/api/workspace-ext/term/poll').handler(makeReq('GET', '/api/workspace-ext/term/poll'), resPoll2)
-    expect(bodyOf(resPoll2).exited).toBe(true)
+    await new Promise(resolve => setImmediate(resolve))
+    const framesDone = ssePayloads(resStream)
+    expect(framesDone[framesDone.length - 1]!.exited).toBe(true)
+    closeStream(reqStream)
   })
 
   it('latches a rejecting done to the handle that rejected', async () => {
@@ -501,23 +950,27 @@ describe('workspace-ext node half', () => {
     await spawnRoute.handler(makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo' }), makeRes())
     const terminalAPromise = (subprocess.spawnTerminal as ReturnType<typeof vi.fn>).mock.results[0]!.value as Promise<FakeTerminal>
     const terminalA = await terminalAPromise
-    await spawnRoute.handler(makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo' }), makeRes())
+    const resB = makeRes()
+    await spawnRoute.handler(makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo' }), resB)
+    const idB = bodyOf(resB).id as string
     const terminalBPromise = (subprocess.spawnTerminal as ReturnType<typeof vi.fn>).mock.results[1]!.value as Promise<FakeTerminal>
     const terminalB = await terminalBPromise
 
     // The replaced session rejecting must not latch exited onto the current one.
     terminalA.rejectDone(new Error('pty closed'))
     await terminalA.done.catch(() => { /* expected rejection */ })
-    const resPoll = makeRes()
-    await byPath(routes, '/api/workspace-ext/term/poll').handler(makeReq('GET', '/api/workspace-ext/term/poll'), resPoll)
-    expect(bodyOf(resPoll).exited).toBe(false)
+    const reqStream = makeReq('GET', `/api/workspace-ext/term/stream?session=${idB}`)
+    const resStream = makeSseRes()
+    await byPath(routes, '/api/workspace-ext/term/stream').handler(reqStream, resStream)
+    expect(ssePayloads(resStream)).toEqual([])
 
     // The current session rejecting marks the terminal exited.
     terminalB.rejectDone(new Error('pty closed'))
     await terminalB.done.catch(() => { /* expected rejection */ })
-    const resPoll2 = makeRes()
-    await byPath(routes, '/api/workspace-ext/term/poll').handler(makeReq('GET', '/api/workspace-ext/term/poll'), resPoll2)
-    expect(bodyOf(resPoll2).exited).toBe(true)
+    await new Promise(resolve => setImmediate(resolve))
+    const frames = ssePayloads(resStream)
+    expect(frames[frames.length - 1]!.exited).toBe(true)
+    closeStream(reqStream)
   })
 
   it('spawns the user default shell, falling back per platform', async () => {
@@ -576,15 +1029,16 @@ describe('workspace-ext node half', () => {
     ;(subprocess.spawnTerminal as ReturnType<typeof vi.fn>).mockResolvedValueOnce(badTerminal)
     const resSpawn = makeRes()
     await spawnRoute.handler(makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo' }), resSpawn)
+    const idA = bodyOf(resSpawn).id as string
     const resWriteFail = makeRes()
-    await writeRoute.handler(makeReq('POST', '/api/workspace-ext/term/write', '127.0.0.1:52351', { text: 'x' }), resWriteFail)
+    await writeRoute.handler(makeReq('POST', '/api/workspace-ext/term/write', '127.0.0.1:52351', { session: idA, text: 'x' }), resWriteFail)
     expect(bodyOf(resWriteFail).error).toBe('eio')
 
     // Terminate rejection is swallowed by the cleanup disposer.
     badTerminal.terminate = vi.fn(async () => { throw new Error('gone') })
     const resKill = makeRes()
     await byPath(routes, '/api/workspace-ext/term/kill').handler(
-      makeReq('POST', '/api/workspace-ext/term/kill', '127.0.0.1:52351', {}), resKill)
+      makeReq('POST', '/api/workspace-ext/term/kill', '127.0.0.1:52351', { session: idA }), resKill)
     expect(bodyOf(resKill).ok).toBe(true)
   })
 
@@ -597,28 +1051,41 @@ describe('workspace-ext node half', () => {
     const res = makeRes()
     await byPath(routes, '/api/workspace-ext/term/spawn').handler(
       makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo' }), res)
+    const idA = bodyOf(res).id as string
     t.output.emit('data', 'raw-string-chunk')
-    const resPoll = makeRes()
-    await byPath(routes, '/api/workspace-ext/term/poll').handler(makeReq('GET', '/api/workspace-ext/term/poll'), resPoll)
-    expect(bodyOf(resPoll).out).toBe('raw-string-chunk')
+    const reqStream = makeReq('GET', `/api/workspace-ext/term/stream?session=${idA}`)
+    const resStream = makeSseRes()
+    await byPath(routes, '/api/workspace-ext/term/stream').handler(reqStream, resStream)
+    expect(ssePayloads(resStream)[0]!.out).toBe('raw-string-chunk')
+    closeStream(reqStream)
   })
 
-  it('cleanup disposers terminate an active terminal', async () => {
+  it('cleanup disposers terminate every active terminal', async () => {
     const { ctx, routes, disposers } = bench()
     const subprocess = fakeSubprocess([])
     ;(ctx as unknown as Record<string, unknown>)['svc:subprocess'] = subprocess
-    const t = new FakeTerminal()
-    ;(subprocess.spawnTerminal as ReturnType<typeof vi.fn>).mockResolvedValueOnce(t)
-    const res = makeRes()
+    const resS1 = makeRes()
     await byPath(routes, '/api/workspace-ext/term/spawn').handler(
-      makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo' }), res)
+      makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo' }), resS1)
+    const idA = bodyOf(resS1).id as string
+    const resS2 = makeRes()
+    await byPath(routes, '/api/workspace-ext/term/spawn').handler(
+      makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo' }), resS2)
+    const idB = bodyOf(resS2).id as string
+    const all = (subprocess.spawnTerminal as ReturnType<typeof vi.fn>).mock.results
+    const t1 = await (all[0]!.value as Promise<FakeTerminal>)
+    const t2 = await (all[1]!.value as Promise<FakeTerminal>)
     for (const dispose of disposers) dispose()
-    expect(t.terminated).toBe(true)
-    // A second pass runs disposeTerm with no handle (idempotent no-op).
+    expect(t1.terminated).toBe(true)
+    expect(t2.terminated).toBe(true)
+    // A second pass is an idempotent no-op.
     for (const dispose of disposers) dispose()
     const resStatus = makeRes()
-    await byPath(routes, '/api/workspace-ext/term/status').handler(makeReq('GET', '/api/workspace-ext/term/status'), resStatus)
-    expect(bodyOf(resStatus).running).toBe(false)
+    await byPath(routes, '/api/workspace-ext/term/status').handler(makeReq('GET', `/api/workspace-ext/term/status?session=${idA}`), resStatus)
+    expect(bodyOf(resStatus).error).toBe('unknown session')
+    const resStatusB = makeRes()
+    await byPath(routes, '/api/workspace-ext/term/status').handler(makeReq('GET', `/api/workspace-ext/term/status?session=${idB}`), resStatusB)
+    expect(bodyOf(resStatusB).error).toBe('unknown session')
   })
 
   it('marks the terminal exited when its done promise rejects', async () => {
@@ -631,11 +1098,14 @@ describe('workspace-ext node half', () => {
     const res = makeRes()
     await byPath(routes, '/api/workspace-ext/term/spawn').handler(
       makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo' }), res)
+    const idA = bodyOf(res).id as string
     // let the rejection propagate through the catch handler
     await new Promise((resolve) => { queueMicrotask(() => { resolve(undefined) }) })
-    const resPoll = makeRes()
-    await byPath(routes, '/api/workspace-ext/term/poll').handler(makeReq('GET', '/api/workspace-ext/term/poll'), resPoll)
-    expect(bodyOf(resPoll).exited).toBe(true)
+    const reqStream = makeReq('GET', `/api/workspace-ext/term/stream?session=${idA}`)
+    const resStream = makeSseRes()
+    await byPath(routes, '/api/workspace-ext/term/stream').handler(reqStream, resStream)
+    expect(ssePayloads(resStream)[0]!.exited).toBe(true)
+    closeStream(reqStream)
   })
 
   it('survives malformed and scalar request bodies and stream errors', async () => {
@@ -797,9 +1267,10 @@ describe('workspace-ext node half — coverage arms', () => {
     const resSpawn = makeRes()
     await byPath(routes, '/api/workspace-ext/term/spawn').handler(
       makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo' }), resSpawn)
+    const idA = bodyOf(resSpawn).id as string
     const resWrite = makeRes()
     await byPath(routes, '/api/workspace-ext/term/write').handler(
-      makeReq('POST', '/api/workspace-ext/term/write', '127.0.0.1:52351', {}), resWrite)
+      makeReq('POST', '/api/workspace-ext/term/write', '127.0.0.1:52351', { session: idA }), resWrite)
     expect(bodyOf(resWrite).ok).toBe(true)
     expect(t.writes).toEqual([''])
   })
@@ -820,9 +1291,10 @@ describe('workspace-ext node half — coverage arms', () => {
     const resSpawn2 = makeRes()
     await byPath(routes, '/api/workspace-ext/term/spawn').handler(
       makeReq('POST', '/api/workspace-ext/term/spawn', '127.0.0.1:52351', { cwd: '/repo' }), resSpawn2)
+    const idB = bodyOf(resSpawn2).id as string
     const resWrite = makeRes()
     await byPath(routes, '/api/workspace-ext/term/write').handler(
-      makeReq('POST', '/api/workspace-ext/term/write', '127.0.0.1:52351', { text: 'x' }), resWrite)
+      makeReq('POST', '/api/workspace-ext/term/write', '127.0.0.1:52351', { session: idB, text: 'x' }), resWrite)
     expect(bodyOf(resWrite).error).toBe('eio-string')
   })
 })

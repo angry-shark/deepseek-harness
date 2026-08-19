@@ -46,12 +46,24 @@ export interface GitStatusInfo {
   error?: string
 }
 
-/** Incremental terminal output since the previous poll. */
-export interface TermPoll {
+/** One git mutation (stage/unstage/discard/commit) answer. */
+export interface GitActionResult {
   ok: boolean
-  out: string
-  exited: boolean
   error?: string
+}
+
+/** One file's modification content for the Git tab diff viewer. */
+export interface GitDiffResult {
+  ok: boolean
+  error?: string
+  /** Unified diff text for a tracked file. */
+  diff?: string
+  /** True when the file is untracked and `content` carries the raw text. */
+  untracked?: boolean
+  /** The full file text when the file is untracked. */
+  content?: string
+  /** The changed path. */
+  path?: string
 }
 
 async function getJson<T>(url: string): Promise<T> {
@@ -81,11 +93,30 @@ export const api = {
     postJson('/api/workspace-ext/checkout', { path, branch }),
   gitStatus: (path: string): Promise<GitStatusInfo> =>
     getJson(`/api/workspace-ext/status?path=${encodeURIComponent(path)}`),
-  termSpawn: (cwd: string): Promise<{ ok: boolean; error?: string }> =>
-    postJson('/api/workspace-ext/term/spawn', { cwd }),
-  termWrite: (text: string): Promise<{ ok: boolean; error?: string }> =>
-    postJson('/api/workspace-ext/term/write', { text }),
-  termPoll: (): Promise<TermPoll> => getJson('/api/workspace-ext/term/poll'),
-  termKill: (): Promise<{ ok: boolean }> => postJson('/api/workspace-ext/term/kill', {}),
-  termStatus: (): Promise<TermStatus> => getJson('/api/workspace-ext/term/status'),
+  gitDiff: (path: string, file: string, staged: boolean): Promise<GitDiffResult> =>
+    getJson(`/api/workspace-ext/diff?path=${encodeURIComponent(path)}&file=${encodeURIComponent(file)}&staged=${staged ? 1 : 0}`),
+  gitAction: (
+    path: string,
+    action: 'stage' | 'unstage' | 'discard' | 'commit',
+    opts: { files?: string[]; message?: string; all?: boolean; staged?: boolean } = {},
+  ): Promise<GitActionResult> => {
+    // Only truthy flags cross the wire: `staged: false` would otherwise leak
+    // into the payload and read as an explicit (wrong) discard mode.
+    const body: Record<string, unknown> = { path, action }
+    if (opts.files !== undefined) body.files = opts.files
+    if (opts.message !== undefined) body.message = opts.message
+    if (opts.all === true) body.all = true
+    if (opts.staged === true) body.staged = true
+    return postJson('/api/workspace-ext/git/action', body)
+  },
+  termSpawn: (cwd: string, session?: string): Promise<{ ok: boolean; id?: string; error?: string }> =>
+    postJson('/api/workspace-ext/term/spawn', session === undefined ? { cwd } : { cwd, session }),
+  termWrite: (session: string, text: string): Promise<{ ok: boolean; error?: string }> =>
+    postJson('/api/workspace-ext/term/write', { session, text }),
+  termResize: (session: string, cols: number, rows: number): Promise<{ ok: boolean; error?: string }> =>
+    postJson('/api/workspace-ext/term/resize', { session, cols, rows }),
+  termKill: (session: string): Promise<{ ok: boolean; error?: string }> =>
+    postJson('/api/workspace-ext/term/kill', { session }),
+  termStatus: (session: string): Promise<TermStatus> =>
+    getJson(`/api/workspace-ext/term/status?session=${encodeURIComponent(session)}`),
 }
