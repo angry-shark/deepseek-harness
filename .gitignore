@@ -42,3 +42,4 @@ desktop/src-tauri/gen/
 worktrees/
 .agents/worktrees/
 .typert-*/
+.ignore
