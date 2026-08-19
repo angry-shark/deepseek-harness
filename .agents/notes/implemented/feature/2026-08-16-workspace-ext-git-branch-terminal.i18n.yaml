@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-16-workspace-ext-git-branch-terminal.md
-2026-08-16-workspace-ext-git-branch-terminal.md: c0d276306ee8a79846e34c5616b6da26c79658ae
-2026-08-16-workspace-ext-git-branch-terminal.zh.md: 92b0fa49ae9a374b372d115b32113fd8d1eae810
+2026-08-16-workspace-ext-git-branch-terminal.md: 5f257011e87b18ccf6a9077f74f8d65c58fde027
+2026-08-16-workspace-ext-git-branch-terminal.zh.md: 86d8aa57bde38b72d4c7a25990a9da9ccdaaedfa
