@@ -272,6 +272,28 @@
   background: currentColor;
 }
 
+/* The bottom-panel collapse icon: a chevron tab pointing down, to close the
+   horizontal track that sits below the main columns. */
+.panelDownIcon {
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  position: relative;
+}
+
+.panelDownIcon::after {
+  content: '';
+  position: absolute;
+  bottom: -1.5px;
+  left: -1.5px;
+  width: calc(100% + 3px);
+  height: 4px;
+  border-radius: 0 0 2px 2px;
+  background: currentColor;
+}
+
 /* VS Code style tab-scoped actions: flat ghost buttons in a slim toolbar
    inside each tab's content, below the panel header. */
 .headBtn {
@@ -407,22 +429,86 @@
   outline: none;
 }
 
-.termPanes {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
 .termPane {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
+/* Horizontal (side-by-side) split divider: a split's panes render as a row. */
 .termPane + .termPane {
-  border-top: 1px solid var(--dsw-alias-border-l1);
+  border-left: 1px solid var(--dsw-alias-border-l1);
+}
+
+/* The bottom terminal panel: the main terminal area beside a vertical tab
+   column on the right (VS Code-style: one tab per group, sub-tabs for splits). */
+.termPanelBody {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.termMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.termPanesRow {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+}
+
+.termTabsCol {
+  flex: none;
+  width: 148px;
+  min-height: 0;
+  overflow-y: auto;
+  border-left: 1px solid var(--dsw-alias-border-l1);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+
+.termTabGroup {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 2px;
+}
+
+.termTabRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  flex: none;
+}
+
+.termTabRowOn {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.termTabRowNested {
+  padding-left: 18px;
+}
+
+/* The Git panel body fills the right column; no edge rail (the titlebar's
+   右侧 toggle reopens the column). */
+.gitPanelBody {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 
 .termStatus {
@@ -801,4 +887,63 @@
   margin-right: 4px;
   user-select: none;
   opacity: 0.9;
+}
+
+/* The right workspace panel shell: the tabbed body hosts the tab strip
+   header (Git / 提交历史) and the active tab's content. The collapsed rail
+   (rightRail) carries just the tab buttons. */
+.rightTabsBody {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* The branch commit history list: each row is a short hash + the commit's
+   subject and author/date, VS Code SCM style. */
+.gitCommits {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.gitCommitRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+.gitCommitRow:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.gitCommitHash {
+  flex: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.gitCommitMeta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.gitCommitMsg {
+  color: var(--dsw-alias-label-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gitCommitSub {
+  color: var(--dsw-alias-label-caption);
+  font-size: 11px;
 }

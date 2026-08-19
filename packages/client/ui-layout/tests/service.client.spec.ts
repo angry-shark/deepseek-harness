@@ -13,16 +13,19 @@ function fakePanels(): PanelActions {
     setSidebar: vi.fn(),
     setDetails: vi.fn(),
     setRight: vi.fn(),
+    setBottom: vi.fn(),
     toggleSidebar: vi.fn(),
     setNarrow: vi.fn(),
     openDetails: vi.fn(),
     closeDetails: vi.fn(),
+    toggleDetails: vi.fn(),
     toggleRight: vi.fn(),
+    toggleBottom: vi.fn(),
   }
 }
 
 describe('LayoutController', () => {
-  it('forwards the four panel actions to the attached set', () => {
+  it('forwards the panel actions to the attached set', () => {
     const service = new LayoutController()
     const panels = fakePanels()
     service.attachPanels(panels)
@@ -30,15 +33,20 @@ describe('LayoutController', () => {
     service.toggleSidebar()
     service.openDetails()
     service.closeDetails()
+    service.toggleDetails()
     service.toggleRight()
+    service.toggleBottom()
 
     expect(panels.toggleSidebar).toHaveBeenCalledTimes(1)
     expect(panels.openDetails).toHaveBeenCalledTimes(1)
     expect(panels.closeDetails).toHaveBeenCalledTimes(1)
+    expect(panels.toggleDetails).toHaveBeenCalledTimes(1)
     expect(panels.toggleRight).toHaveBeenCalledTimes(1)
+    expect(panels.toggleBottom).toHaveBeenCalledTimes(1)
     expect(panels.setSidebar).not.toHaveBeenCalled()
     expect(panels.setDetails).not.toHaveBeenCalled()
     expect(panels.setRight).not.toHaveBeenCalled()
+    expect(panels.setBottom).not.toHaveBeenCalled()
   })
 
   it('fails loud before the root entry wired its actions', () => {
@@ -46,7 +54,9 @@ describe('LayoutController', () => {
     expect(() => { service.toggleSidebar() }).toThrow(/panel actions not wired/)
     expect(() => { service.openDetails() }).toThrow(/panel actions not wired/)
     expect(() => { service.closeDetails() }).toThrow(/panel actions not wired/)
+    expect(() => { service.toggleDetails() }).toThrow(/panel actions not wired/)
     expect(() => { service.toggleRight() }).toThrow(/panel actions not wired/)
+    expect(() => { service.toggleBottom() }).toThrow(/panel actions not wired/)
   })
 
   it('re-attach overwrites the stale action set (entry re-register)', () => {

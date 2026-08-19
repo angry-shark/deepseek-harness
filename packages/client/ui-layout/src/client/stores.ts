@@ -9,33 +9,46 @@
  */
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
 import {
-  clampWidth, DETAILS_DEFAULT, DETAILS_MAX, DETAILS_MIN,
+  clampWidth, BOTTOM_DEFAULT, BOTTOM_MAX, BOTTOM_MIN,
+  DETAILS_DEFAULT, DETAILS_MAX, DETAILS_MIN,
   RIGHT_DEFAULT, RIGHT_MAX, RIGHT_MIN,
   SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN,
 } from './columns.ts'
 
 /**
- * Layout store state: panel width preferences in px (0 = closed), plus the
- * narrow-viewport pair — `narrow` mirrors AppFrame's breakpoint reading
+ * Layout store state: panel width/height preferences in px (0 = closed), plus
+ * the narrow-viewport pair — `narrow` mirrors AppFrame's breakpoint reading
  * (viewport < SIDEBAR_AUTO_COLLAPSE) so toggleSidebar can pick semantics, and
  * `narrowExpanded` is the manual override that re-expands the auto-collapsed
  * sidebar over the squeezed center without rewriting the width preference.
+ * The bottom terminal panel is modeled the same way as a horizontal track: its
+ * `bottom` height (0 = closed).
  */
-type LayoutState = { sidebar: number; details: number; right: number; narrow: boolean; narrowExpanded: boolean }
+export type LayoutState = {
+  sidebar: number
+  details: number
+  right: number
+  bottom: number
+  narrow: boolean
+  narrowExpanded: boolean
+}
 
 /**
  * Annotation twin of the actions literal below (the export needs a declared
  * return type); drift fails assignability at the defineStore call.
  */
-type LayoutActions = {
+export type LayoutActions = {
   setSidebar: (draft: LayoutState, px: number) => void
   setDetails: (draft: LayoutState, px: number) => void
   setRight: (draft: LayoutState, px: number) => void
+  setBottom: (draft: LayoutState, px: number) => void
   toggleSidebar: (draft: LayoutState) => void
   setNarrow: (draft: LayoutState, narrow: boolean) => void
   openDetails: (draft: LayoutState) => void
   closeDetails: (draft: LayoutState) => void
+  toggleDetails: (draft: LayoutState) => void
   toggleRight: (draft: LayoutState) => void
+  toggleBottom: (draft: LayoutState) => void
 }
 
 /**
@@ -50,11 +63,14 @@ type LayoutActions = {
  */
 export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutActions>  {
   const handle = defineStore({
-    init: (): LayoutState => ({ sidebar: SIDEBAR_DEFAULT, details: 0, right: 0, narrow: false, narrowExpanded: false }),
+    init: (): LayoutState => ({
+      sidebar: SIDEBAR_DEFAULT, details: 0, right: 0, bottom: 0, narrow: false, narrowExpanded: false,
+    }),
     actions: {
       setSidebar: (d, px: number) => { d.sidebar = clampWidth(px, SIDEBAR_MIN, SIDEBAR_MAX) },
       setDetails: (d, px: number) => { d.details = clampWidth(px, DETAILS_MIN, DETAILS_MAX) },
       setRight: (d, px: number) => { d.right = clampWidth(px, RIGHT_MIN, RIGHT_MAX) },
+      setBottom: (d, px: number) => { d.bottom = clampWidth(px, BOTTOM_MIN, BOTTOM_MAX) },
       // Narrow toggles flip only the override: the width preference survives
       // untouched, so re-widening restores the pre-squeeze layout.
       toggleSidebar: (d) => {
@@ -70,9 +86,11 @@ export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutAction
       },
       openDetails: (d) => { if (d.details === 0) d.details = DETAILS_DEFAULT },
       closeDetails: (d) => { d.details = 0 },
+      toggleDetails: (d) => { d.details = d.details === 0 ? DETAILS_DEFAULT : 0 },
       // The right panel toggles like the sidebar, without a narrow override:
       // the workspace rail is compact enough to keep at narrow viewports.
       toggleRight: (d) => { d.right = d.right === 0 ? RIGHT_DEFAULT : 0 },
+      toggleBottom: (d) => { d.bottom = d.bottom === 0 ? BOTTOM_DEFAULT : 0 },
     },
   })
   return handle

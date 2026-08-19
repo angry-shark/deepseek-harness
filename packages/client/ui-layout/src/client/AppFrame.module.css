@@ -1,8 +1,134 @@
 .frame {
   position: relative; /* anchors the drag handles, which straddle column borders */
   display: grid;
-  grid-template-rows: 100%;
+  grid-template-rows: auto 1fr auto;
   height: 100%;
+  overflow: hidden;
+  background: var(--dsw-alias-bg-base);
+}
+
+/* The custom window titlebar: a slim drag surface for the undecorated Tauri
+   window plus the window controls and the layout menu (see TitleBar.tsx). */
+.titleBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 8px;
+  user-select: none;
+  background: var(--dsw-specific-sidebar-fill);
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  /* data-tauri-drag-region makes this the window's drag surface in the WebView. */
+}
+
+.titleBarTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+  padding-left: 4px;
+  white-space: nowrap;
+}
+
+.titleBarSpacer {
+  flex: 1;
+}
+
+.titleBarGroup {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.titleBarBtn {
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.titleBarBtn:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.titleBarBtnOn {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* The three window controls, VS Code style: hover reveals, close turns red. */
+.windowControls {
+  display: flex;
+  align-items: center;
+  margin-left: 4px;
+}
+
+.winBtn {
+  border: none;
+  background: transparent;
+  width: 40px;
+  height: 34px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.winBtn:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.winClose:hover {
+  background: var(--dsw-specific-danger-primary, var(--dsw-alias-state-danger-primary));
+  color: #fff;
+}
+
+/* The macOS traffic lights: three 12px circles at the top-left matching the
+   native colors and order (red close, yellow minimize, green maximize), with
+   the glyph revealed on hover only — the standard macOS chrome. The fill
+   colors are fixed platform constants, not theme tokens. */
+.trafficLights {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  margin-right: 2px;
+}
+
+.trafficLight {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  line-height: 1;
+  font-size: 9px;
+  color: transparent;
+  cursor: default;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.trafficClose { background: #ff5f57; }
+.trafficMin { background: #febc2e; }
+.trafficMax { background: #28c840; }
+
+.trafficLight:hover {
+  color: rgba(0, 0, 0, 0.55);
+}
+
+
+/* The column grid holding the four panels; the frame's concession transition
+   animates this track (not the titlebar/bottom rows). */
+.mainArea {
+  position: relative; /* anchors the drag handles, which straddle column borders */
+  display: grid;
+  grid-template-rows: 100%;
+  min-height: 0;
   overflow: hidden;
   background: var(--dsw-alias-bg-base);
   /* Collapse/expand animates the tracks on the deepsuite sider curve
@@ -12,12 +138,12 @@
 
 /* Dragging writes widths at pointer cadence; easing them would detach the
    column from the handle. */
-.frame[data-dragging] {
+.frame[data-dragging] .mainArea {
   transition: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .frame {
+  .mainArea {
     transition: none;
   }
 }
@@ -91,8 +217,7 @@
   content: '';
   position: absolute;
   top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  left: 50%;  transform: translate(-50%, -50%);
   width: 12px;
   height: 32px;
   border-radius: 10px;
@@ -124,6 +249,19 @@
   border-color: var(--dsw-alias-border-l3);
 }
 
+/* The bottom track's height handle: horizontal, rides the top edge of the
+   bottom row, cursor row-resize. */
+.handle[data-side='bottom'] {
+  top: auto;
+  right: 0;
+  left: 0;
+  height: 8px;
+  width: auto;
+  margin-left: 0;
+  margin-top: -4px;
+  cursor: row-resize;
+}
+
 .overlayLayer {
   position: absolute;
   inset: 0;
@@ -133,4 +271,13 @@
 
 .overlayLayer > * {
   pointer-events: auto;
+}
+
+/* The bottom panel row (hosts the terminal). Height rides the layout store's
+   `bottom` value; inline `display: none` hides it while closed so the occupant
+   stays mounted (its xterm surface survives the toggle). */
+.bottomRow {
+  min-height: 0;
+  overflow: hidden;
+  border-top: 1px solid var(--dsw-alias-border-l1);
 }

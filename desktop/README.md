@@ -71,9 +71,13 @@ The packaged app ships the closure and the Node binary as plain bundle resources
 
 The renderer is a remote page served by the harness itself: the WebView has no node integration at all (system WebView engines), and navigation is confined to the harness origin — `on_navigation` denies other origins and `on_new_window` denies new windows, both opening in the system browser instead.
 
+## Custom titlebar and window-control IPC
+
+The window is **undecorated** (`decorations(false)`): the GUI's custom titlebar (`TitleBar` in ui-layout) is the drag surface (`data-tauri-drag-region`) and owns the close / maximize / minimize controls, styled and positioned to match the packaged platform's native chrome: **macOS shows the left-aligned red/yellow/green traffic lights, Windows/Linux the right-aligned square buttons** (detected from the user agent). To let that remote page call the Tauri window API, `withGlobalTauri` is enabled and a `window-controls` capability (see `src-tauri/capabilities/window-controls.json`) grants only `core:window` minimize / toggle-maximize / close / start-dragging / read permissions, scoped **strictly to the harness origin** (`http://127.0.0.1:*`, `http://localhost:*`) on the `main` window. Nothing else on the system is reachable through this capability; `on_navigation`/`on_new_window` confinement is unchanged.
+
 ## Known limitations and deferred work
 
 - Installers are unsigned and ship no auto-update mechanism.
 - The unpacked macOS app is ~356 MB (the runtime closure is ~233 MB and the Node binary ~114 MB); the DMG installer compresses the payload. The Node binary is a full upstream build, so pruning it means shipping a custom build.
-- The window title is the product name; no tray or background behavior exists — closing the window stops the server.
+- The window title is the product name (shown by the custom titlebar, which also carries the layout menu); no tray or background behavior exists — closing the window stops the server.
 - Sending SIGTERM to the shell process itself (not its quit path) leaves the server child running, as the shell cannot clean up what it never saw terminate.

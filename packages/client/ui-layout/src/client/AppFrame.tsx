@@ -15,12 +15,13 @@ import type { ReactNode } from 'react'
 import type { PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import { computeColumns, RIGHT_COLLAPSED, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_DEFAULT } from './columns.ts'
 import type { createLayoutStore } from './stores.ts'
+import { TitleBar } from './TitleBar.tsx'
 import css from './AppFrame.module.css'
 
 /** Full composed props: runtime share + child-slot render share + store share. */
 export type AppFrameProps =
   & PropsRuntime<'root'>
-  & PropsRenderSlots<'sidebar' | 'conversation' | 'details' | 'shell.right' | 'shell.overlay'>
+  & PropsRenderSlots<'sidebar' | 'conversation' | 'details' | 'shell.right' | 'shell.bottom' | 'shell.overlay'>
   & PropsStore<ReturnType<typeof createLayoutStore>>
 
 /** Center column grid item (session-body building block). */
@@ -38,34 +39,57 @@ function RightColumn(props: { children?: ReactNode }) {
   return <div className={css.rightCol}>{props.children}</div>
 }
 
-/**
- * One drag handle: pointer capture, rAF-throttled dx reports against the drag-start origin.
- * `side` keys the hover-reveal CSS to the owning column.
- */
-function DragHandle(props: { side: 'sidebar' | 'details' | 'right'; left: number; onStart: () => void; onDrag: (dx: number) => void; onEnd: () => void }) {
+/** The bottom panel row; hidden (inline) while closed so the occupant stays mounted. */
+function BottomRow(props: { open: boolean; height: number; children?: ReactNode }) {
+  return (
+    <div className={css.bottomRow} style={props.open ? { height: props.height } : { display: 'none' }}>
+      {props.children}
+    </div>
+  )
+}
+
+/** The column grid that holds the four panels under the titlebar and above the bottom row. */
+function MainArea(props: { children?: ReactNode; style: Record<string, string | number> }) {
+  return <div className={css.mainArea} data-frame-main style={props.style}>{props.children}</div>
+}
+
+/** One drag handle: pointer capture, rAF-throttled reports against the
+ *  drag-start origin. A `left` handle drags horizontally (sidebar/details/
+ *  right columns); a `bottom` handle drags vertically (the bottom track's
+ *  height). `side` keys the hover-reveal CSS to the owning panel. */
+function DragHandle(props: {
+  side: 'sidebar' | 'details' | 'right' | 'bottom'
+  left?: number
+  bottom?: number
+  onStart: () => void
+  onDrag: (delta: number) => void
+  onEnd: () => void
+}) {
   const [dragging, setDragging] = useState(false)
+  const horizontal = props.bottom === undefined
   const origin = useRef(0)
   const latest = useRef(0)
   const frame = useRef<number | null>(null)
   const callbacks = useRef({ onStart: props.onStart, onDrag: props.onDrag, onEnd: props.onEnd })
   callbacks.current = { onStart: props.onStart, onDrag: props.onDrag, onEnd: props.onEnd }
 
+  const delta = (event: React.PointerEvent<HTMLDivElement>): number => horizontal ? event.clientX : event.clientY
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault()
     e.currentTarget.setPointerCapture(e.pointerId)
-    origin.current = e.clientX
-    latest.current = e.clientX
+    origin.current = delta(e)
+    latest.current = delta(e)
     callbacks.current.onStart()
     setDragging(true)
-  }, [])
+  }, [delta])
   const onPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!e.currentTarget.hasPointerCapture(e.pointerId)) return
-    latest.current = e.clientX
+    latest.current = delta(e)
     frame.current ??= requestAnimationFrame(() => {
       frame.current = null
       callbacks.current.onDrag(latest.current - origin.current)
     })
-  }, [])
+  }, [delta])
   const onPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!e.currentTarget.hasPointerCapture(e.pointerId)) return
     e.currentTarget.releasePointerCapture(e.pointerId)
@@ -73,12 +97,12 @@ function DragHandle(props: { side: 'sidebar' | 'details' | 'right'; left: number
     callbacks.current.onDrag(latest.current - origin.current)
     setDragging(false)
     callbacks.current.onEnd()
-  }, [])
+  }, [delta])
 
   return (
     <div
       className={css.handle}
-      style={{ left: props.left }}
+      style={horizontal ? { left: props.left } : { bottom: props.bottom }}
       data-side={props.side}
       data-dragging={dragging || undefined}
       onPointerDown={onPointerDown}
@@ -148,6 +172,26 @@ export function AppFrame({
   const colsRef = useRef(cols)
   colsRef.current = cols
 
+  // Cmd/Ctrl+J toggles the bottom terminal panel (the VS Code shortcut). It
+  // is skipped while the focus is in an editable field so typing isn't
+  // hijacked; preventDefault also stops the browser's own Cmd/Ctrl+J (e.g.
+  // downloads) in the WebView.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (!(event.metaKey || event.ctrlKey)) return
+      if (event.key.toLowerCase() !== 'j') return
+      const target = event.target
+      if (target instanceof HTMLElement
+        && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) {
+        return
+      }
+      event.preventDefault()
+      actions.toggleBottom()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => { window.removeEventListener('keydown', onKeyDown) }
+  }, [actions])
+
   // The drag base is the rendered width captured at drag start (grabbing a
   // concession-clamped panel must not jump back to the stored preference);
   // it stays frozen for the whole gesture so dx deltas do not compound.
@@ -172,53 +216,79 @@ export function AppFrame({
   const onRightDrag = useCallback((dx: number) => {
     actions.setRight(rightBase.current - dx)
   }, [actions])
+  // The bottom panel's height is dragged from the top edge of its row: a
+  // handle strip spans its top, and dragging up (negative dy) grows the panel.
+  const bottomBase = useRef(0)
+  const onBottomStart = useCallback(() => { bottomBase.current = panels.bottom; setDragging(true) }, [panels.bottom])
+  const onBottomDrag = useCallback((dy: number) => {
+    actions.setBottom(bottomBase.current - dy)
+  }, [actions])
 
   return (
     <div
       ref={frameRef}
       className={css.frame}
-      style={{ gridTemplateColumns: `${cols.sidebar}px minmax(0, 1fr) ${cols.details}px ${cols.right}px` }}
       data-sidebar-collapsed={sidebarCollapsed || undefined}
       data-details-collapsed={cols.details === 0 || undefined}
       data-right-collapsed={cols.right === RIGHT_COLLAPSED || undefined}
       data-dragging={dragging || undefined}
     >
-      <div className={css.sidebarCol}>
-        {/* Render-site slot call with live concession output: a closed
-            sidebar keeps the mounted slot at the compact-rail width, and the
-            component sees its rendered state as owner params decided here
-            (collapsed follows the resolved rail, so a derived auto-collapse
-            renders the rail UI too). */}
-        {renderSlot('sidebar', {
-          collapsed: sidebarCollapsed,
-          width: cols.sidebar,
-        })}
-      </div>
-      <>
-        {/* Both column occupants stay at fixed tree positions from first
-            paint — no loading gate: a bare status line reads worse than
-            the shell's own pending rendering. The conversation
-            is session-maybe; the strict details entry naturally renders
-            empty while no session is current. */}
-        <CenterColumn>{renderSlot('conversation', {})}</CenterColumn>
-        <DetailsColumn>{renderSlot('details', {})}</DetailsColumn>
-        {/* The right workspace column renders the tabbed workspace panel
-            (terminal + Git); it participates in the concession chain like
-            the sidebar, so an open panel squeezes the center column. */}
-        <RightColumn>
-          {renderSlot('shell.right', {
-            collapsed: cols.right === RIGHT_COLLAPSED,
-            width: cols.right,
+      {/* The custom window titlebar: drag surface + close/maximize/minimize
+          in the Tauri WebView, plus the layout menu that toggles each panel. */}
+      <TitleBar useStore={useStore} actions={actions} />
+      {/* The column grid (sidebar | center | details | right) holding the four
+          panels; drag handles position against it. */}
+      <MainArea style={{ gridTemplateColumns: `${cols.sidebar}px minmax(0, 1fr) ${cols.details}px ${cols.right}px` }}>
+        <div className={css.sidebarCol}>
+          {/* Render-site slot call with live concession output: a closed
+              sidebar keeps the mounted slot at the compact-rail width, and the
+              component sees its rendered state as owner params decided here
+              (collapsed follows the resolved rail, so a derived auto-collapse
+              renders the rail UI too). */}
+          {renderSlot('sidebar', {
+            collapsed: sidebarCollapsed,
+            width: cols.sidebar,
           })}
-        </RightColumn>
-      </>
+        </div>
+        <>
+          {/* Both column occupants stay at fixed tree positions from first
+              paint — no loading gate: a bare status line reads worse than
+              the shell's own pending rendering. The conversation
+              is session-maybe; the strict details entry naturally renders
+              empty while no session is current. */}
+          <CenterColumn>{renderSlot('conversation', {})}</CenterColumn>
+          <DetailsColumn>{renderSlot('details', {})}</DetailsColumn>
+          {/* The right workspace column renders the workspace panel (it held
+              terminal + Git; the terminal moved to the bottom panel below). It
+              participates in the concession chain like the sidebar, so an open
+              panel squeezes the center column. */}
+          <RightColumn>
+            {renderSlot('shell.right', {
+              collapsed: cols.right === RIGHT_COLLAPSED,
+              width: cols.right,
+            })}
+          </RightColumn>
+        </>
+        {/* The collapsed rail is fixed-width: no resize handle while closed. */}
+        {!sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
+        {cols.details > 0 && <DragHandle side="details" left={viewport - cols.details} onStart={onDetailsStart} onDrag={onDetailsDrag} onEnd={onDragEnd} />}
+        {cols.right > RIGHT_COLLAPSED && <DragHandle side="right" left={viewport - cols.right} onStart={onRightStart} onDrag={onRightDrag} onEnd={onDragEnd} />}
+      </MainArea>
+      {/* The bottom panel hosts the terminal; it stays mounted (inline-hidden)
+          while closed so its xterm surface survives panel toggles. */}
+      <BottomRow open={panels.bottom > 0} height={panels.bottom}>
+        {renderSlot('shell.bottom', {
+          collapsed: panels.bottom === 0,
+          height: panels.bottom,
+        })}
+      </BottomRow>
+      {/* The bottom track's height drag handle rides its top edge (hidden
+          while the panel is closed). */}
+      {panels.bottom > 0 && <DragHandle side="bottom" bottom={panels.bottom} onStart={onBottomStart} onDrag={onBottomDrag} onEnd={onDragEnd} />}
+      {/* Frame-wide floating layer, above every column and the bottom row. */}
       <div className={css.overlayLayer} data-shell-overlay>
         {renderSlot('shell.overlay', {})}
       </div>
-      {/* The collapsed rail is fixed-width: no resize handle while closed. */}
-      {!sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
-      {cols.details > 0 && <DragHandle side="details" left={viewport - cols.details} onStart={onDetailsStart} onDrag={onDetailsDrag} onEnd={onDragEnd} />}
-      {cols.right > RIGHT_COLLAPSED && <DragHandle side="right" left={viewport - cols.right} onStart={onRightStart} onDrag={onRightDrag} onEnd={onDragEnd} />}
     </div>
   )
 }

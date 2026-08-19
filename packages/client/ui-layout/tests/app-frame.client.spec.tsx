@@ -15,7 +15,7 @@ import { act, cleanup, render } from '@testing-library/react'
 import { useSyncExternalStore } from 'react'
 import { AppFrame } from '@deepseek-ai/dsh-client-ui-layout/src/client/AppFrame.tsx'
 import type { AppFrameProps } from '@deepseek-ai/dsh-client-ui-layout/src/client/AppFrame.tsx'
-import { RIGHT_COLLAPSED, SIDEBAR_COLLAPSED } from '@deepseek-ai/dsh-client-ui-layout/src/client/columns.ts'
+import { BOTTOM_DEFAULT, RIGHT_COLLAPSED, SIDEBAR_COLLAPSED } from '@deepseek-ai/dsh-client-ui-layout/src/client/columns.ts'
 import { createLayoutStore } from '@deepseek-ai/dsh-client-ui-layout/src/client/stores.ts'
 import type {
   SessionId, SessionListState, WorkspaceListState,
@@ -97,8 +97,9 @@ function mountFrame() {
 }
 
 function tracks(frame: HTMLElement): number[] {
-  const m = /^(\d+)px minmax\(0, 1fr\) (\d+)px (\d+)px$/.exec(frame.style.gridTemplateColumns)
-  if (m === null) throw new Error(`unexpected template: ${frame.style.gridTemplateColumns}`)
+  const main = frame.querySelector('[data-frame-main]') as HTMLElement
+  const m = /^(\d+)px minmax\(0, 1fr\) (\d+)px (\d+)px$/.exec(main.style.gridTemplateColumns)
+  if (m === null) throw new Error(`unexpected template: ${main.style.gridTemplateColumns}`)
   return [Number(m[1]), Number(m[2]), Number(m[3])]
 }
 
@@ -106,6 +107,15 @@ function drag(handle: Element, fromX: number, toX: number): void {
   const down = new PointerEvent('pointerdown', { pointerId: 1, clientX: fromX, bubbles: true })
   const move = new PointerEvent('pointermove', { pointerId: 1, clientX: toX, bubbles: true })
   const up = new PointerEvent('pointerup', { pointerId: 1, clientX: toX, bubbles: true })
+  act(() => { handle.dispatchEvent(down) })
+  act(() => { handle.dispatchEvent(move); vi.advanceTimersByTime(20) })
+  act(() => { handle.dispatchEvent(up) })
+}
+
+function dragY(handle: Element, fromY: number, toY: number): void {
+  const down = new PointerEvent('pointerdown', { pointerId: 1, clientY: fromY, bubbles: true })
+  const move = new PointerEvent('pointermove', { pointerId: 1, clientY: toY, bubbles: true })
+  const up = new PointerEvent('pointerup', { pointerId: 1, clientY: toY, bubbles: true })
   act(() => { handle.dispatchEvent(down) })
   act(() => { handle.dispatchEvent(move); vi.advanceTimersByTime(20) })
   act(() => { handle.dispatchEvent(up) })
@@ -310,6 +320,49 @@ describe('AppFrame', () => {
     // Right handle is the second strip (details closed); dragging right shrinks it.
     drag(handles[1]!, 1560, 1620)
     expect(tracks(frame)[2]).toBe(300)
+  })
+
+  it('opens the bottom panel and drags its height from the top edge', () => {
+    const { frame, instance } = mountFrame()
+    act(() => { instance.actions.toggleBottom() })
+    expect(instance.store.getSnapshot().bottom).toBe(BOTTOM_DEFAULT)
+    // The bottom handle spans its top edge; dragging up grows the panel.
+    const bottomHandle = frame.querySelector('[data-side="bottom"]') as HTMLElement
+    expect(bottomHandle).toBeTruthy()
+    dragY(bottomHandle, 700, 560) // dy = -140 → height grows by 140
+    expect(instance.store.getSnapshot().bottom).toBe(BOTTOM_DEFAULT + 140)
+  })
+
+  it('renders the bottom panel owner props', () => {
+    const { slotCalls, instance } = mountFrame()
+    const closedBottom = slotCalls.filter(c => c.key === 'shell.bottom').at(-1)!
+    expect(closedBottom.props).toEqual({ collapsed: true, height: 0 })
+    act(() => { instance.actions.toggleBottom() })
+    const openBottom = slotCalls.filter(c => c.key === 'shell.bottom').at(-1)!
+    expect(openBottom.props).toEqual({ collapsed: false, height: BOTTOM_DEFAULT })
+  })
+
+  it('toggles the bottom panel with the Ctrl/Cmd+J shortcut', () => {
+    const { instance } = mountFrame()
+    const down = new KeyboardEvent('keydown', { key: 'j', ctrlKey: true, bubbles: true })
+    act(() => { window.dispatchEvent(down) })
+    expect(instance.store.getSnapshot().bottom).toBe(BOTTOM_DEFAULT)
+    act(() => { window.dispatchEvent(down) })
+    expect(instance.store.getSnapshot().bottom).toBe(0)
+  })
+
+  it('does not toggle with Cmd+J while a text input is focused, nor with an unrelated key', () => {
+    const { instance } = mountFrame()
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    const inInput = new KeyboardEvent('keydown', { key: 'j', ctrlKey: true, bubbles: true })
+    act(() => { input.dispatchEvent(inInput) })
+    expect(instance.store.getSnapshot().bottom).toBe(0)
+    // A non-J key with the modifier does nothing.
+    const other = new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true })
+    act(() => { window.dispatchEvent(other) })
+    expect(instance.store.getSnapshot().bottom).toBe(0)
+    document.body.removeChild(input)
   })
 })
 

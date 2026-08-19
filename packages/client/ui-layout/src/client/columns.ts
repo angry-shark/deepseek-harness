@@ -45,6 +45,12 @@ export const RIGHT_MAX = 760
 export const RIGHT_DEFAULT = 360
 /** Closed right-panel rail: a 40px full-height edge strip (like the sidebar rail). */
 export const RIGHT_COLLAPSED = 40
+/** Bottom panel drag clamp floor (px of height). */
+export const BOTTOM_MIN = 120
+/** Bottom panel drag clamp ceiling (px of height). */
+export const BOTTOM_MAX = 520
+/** Bottom-panel height before any user drag. */
+export const BOTTOM_DEFAULT = 220
 
 /**
  * Clamp a panel width into its contract range.

@@ -60,6 +60,10 @@ fn show_window(handle: &AppHandle, url: &str) {
     let origin = parsed.origin().ascii_serialization();
     let window = WebviewWindowBuilder::new(handle, "main", WebviewUrl::External(parsed))
         .title(PRODUCT_NAME)
+        // Undecorated: the custom titlebar rendered by the GUI owns the close /
+        // maximize / minimize controls and the drag region (see the
+        // window-controls capability).
+        .decorations(false)
         .inner_size(1280.0, 820.0)
         .min_inner_size(800.0, 600.0)
         .on_navigation(move |target| {

@@ -82,6 +82,17 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'shell.right': { kind: 'single'; scope: 'root'; owner: RightOwnerProps }
     /**
+     * The bottom workspace panel, a full-width horizontal track below the main
+     * columns. OCCUPIED by ui-workspace-ext's terminal (which moved here from
+     * the right column); registering here replaces the track. Like the right
+     * column, its height is stored and toggleable, but it does not participate
+     * in the column concession chain.
+     *
+     * The occupant receives the live open state and height and is expected to
+     * render a compact header bar while closed.
+     */
+    'shell.bottom': { kind: 'single'; scope: 'root'; owner: BottomOwnerProps }
+    /**
      * Frame-wide floating layer, above every column and outside their scroll
      * containers. Deliberately generic and unowned by any feature: a badge, a
      * toast stack or a status pill all belong here, and entries order among
@@ -123,6 +134,14 @@ export interface RightOwnerProps {
   width: number
 }
 
+/** Bottom workspace panel owner share: the horizontal track's open state and height. */
+export interface BottomOwnerProps {
+  /** True when the bottom panel is closed (the track renders a compact header bar). */
+  collapsed: boolean
+  /** Rendered panel height in px (0 when collapsed). */
+  height: number
+}
+
 /** Required services (cordis fiber inject — the loader passes all module exports as an object plugin). */
 export const inject = ['slots', 'theme']
 
@@ -143,6 +162,7 @@ export function apply(ctx: ClientContext): void {
         'conversation': { kind: 'single', scope: 'session-maybe' },
         'details': { kind: 'single', scope: 'session' },
         'shell.right': { kind: 'single', scope: 'root' },
+        'shell.bottom': { kind: 'single', scope: 'root' },
         'shell.overlay': { kind: 'list', scope: 'root' },
       },
       // Exclusive store: the factory itself — the framework instantiates per

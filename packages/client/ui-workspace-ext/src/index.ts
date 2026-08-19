@@ -259,6 +259,28 @@ export function parseGitStatus(out: string): GitStatus {
   return status
 }
 
+/** One commit in the branch history (the `git log` list). */
+export interface GitCommit {
+  hash: string
+  date: string
+  author: string
+  message: string
+}
+
+/**
+ * Parse `git log --format=%h|%ad|%an|%s` output into commits: one per line,
+ * fields joined by `|` in the format order (short hash, date, author, subject).
+ */
+export function parseGitLog(out: string): GitCommit[] {
+  const commits: GitCommit[] = []
+  for (const line of out.split('\n')) {
+    if (line === '') continue
+    const [hash = '', date = '', author = '', ...msg] = line.split('|')
+    commits.push({ hash, date, author, message: msg.join('|') })
+  }
+  return commits
+}
+
 async function runGit(subprocess: SubprocessRuntime, root: string, args: string[]): Promise<GitRun> {
   let git = 'git'
   try {
@@ -464,6 +486,28 @@ export function apply(ctx: Context): void {
       }
     },
   }), 'workspace-ext: git diff route')
+
+  ctx.effect(() => webServer.register({
+    kind: 'exact',
+    path: '/api/workspace-ext/git/log',
+    handler: async (req, res) => {
+      if (!loopbackHost(req)) { json(res, 403, { ok: false, error: 'forbidden host' }); return }
+      const subprocess = ctx.get('subprocess')
+      /* v8 ignore next -- node:http always sets url on server requests */
+      const url = new URL(req.url ?? '/', 'http://x')
+      const root = url.searchParams.get('path') ?? ''
+      if (subprocess === undefined || root === '') { json(res, 400, { ok: false, error: 'missing path' }); return }
+      try {
+        const r = await runGit(subprocess, root,
+          ['log', '--date=short', '--format=%h|%ad|%an|%s', '-n', '30'])
+        if (r.exitCode !== 0) { json(res, 200, { ok: false, error: (r.err || r.out || `git log exited ${r.exitCode}`).trim() }); return }
+        json(res, 200, { ok: true, commits: parseGitLog(r.out) })
+      } catch (error) {
+        /* v8 ignore next -- lint-enforced Error-only test rejections leave the String fallback uncovered */
+        json(res, 200, { ok: false, error: error instanceof Error ? error.message : String(error) })
+      }
+    },
+  }), 'workspace-ext: git log route')
 
   ctx.effect(() => webServer.register({
     kind: 'exact',

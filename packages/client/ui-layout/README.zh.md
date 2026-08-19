@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-外壳插件：四栏 AppFrame（拖动手柄与让步链）加 `ctx.layout` 面板几何服务；它注册到运行时拥有的 `root` slot，并声明 `sidebar`、`conversation`、`details`、`shell.right` 和 `conversation.empty`。侧边栏的缩放边界是不可见命中条带，详情栏与右侧工作区列的边界则保留浮动胶囊；让步期间详情栏与右侧工作区列会收缩并随后自动关闭。关闭的侧边栏仍保留 56px 控制栏、右侧列保留 40px 边缘竖条，详情栏则关闭到零宽度。该包还提供主题呈现器：它消费解析后的 `ctx.theme` 快照，并将其投影到 document（用 `html { color-scheme }` 驱动原生 UA 控件，依据当前配色方案设置 `body[data-ds-dark-theme]`，并将主题的别名 token 设为 body 上的内联变量，同时拥有一个 `<meta name="theme-color">`，其内容随计算后的 body 背景色更新）。在应用调色板和 token 后进行测量，可确保渲染后的背景成为唯一的颜色依据；呈现器在 dispose（资源释放）时会移除其自有的元数据节点，并一并清除其写入的其他全局状态。
+外壳插件：自定义标题栏（Tauri WebView 中为拖拽区 + 关闭/最大化/最小化窗口控制，并带各面板显隐的布局菜单，以及全局 Cmd/Ctrl+J 快捷键切换底部终端）叠加在四栏 AppFrame（拖动手柄与让步链）之上，另有承载终端的 `shell.bottom` 底部轨道，加 `ctx.layout` 面板几何服务；它注册到运行时拥有的 `root` slot，并声明 `sidebar`、`conversation`、`details`、`shell.right`、`shell.bottom` 和 `conversation.empty`。侧边栏的缩放边界是不可见命中条带，详情栏与右侧工作区列的边界则保留浮动胶囊；让步期间详情栏与右侧工作区列会收缩并随后自动关闭。关闭的侧边栏仍保留 56px 控制栏、右侧列保留 40px 边缘竖条，详情栏则关闭到零宽度。该包还提供主题呈现器：它消费解析后的 `ctx.theme` 快照，并将其投影到 document（用 `html { color-scheme }` 驱动原生 UA 控件，依据当前配色方案设置 `body[data-ds-dark-theme]`，并将主题的别名 token 设为 body 上的内联变量，同时拥有一个 `<meta name="theme-color">`，其内容随计算后的 body 背景色更新）。在应用调色板和 token 后进行测量，可确保渲染后的背景成为唯一的颜色依据；呈现器在 dispose（资源释放）时会移除其自有的元数据节点，并一并清除其写入的其他全局状态。
 
 AppFrame 始终挂载会话栏、详情栏和右侧列；已连接 Session 通过 `SessionProvider` 渲染。布局 store 是瞬时状态，侧边栏以默认宽度启动，详情栏与右侧列则保持关闭，且该 store 从不读写 `localStorage`。hero 和其他未选中状态也会将详情栏的渲染宽度派生为零，但不会改变存储的宽度偏好。AppFrame 会跨越这些状态保留最后一个非 blank 会话 id：首个会话保持关闭；显式打开详情栏的操作会使用约定默认宽度；返回同一会话时恢复其未改变的宽度；选择不同会话时，详情栏会在绘制前关闭。会话 owner share 为空，侧边栏与右侧 owner share 只包含 `collapsed` 和 `width`；注册方通过标准钩子获取业务数据，并从各自的 inject 接口获取操作。
 

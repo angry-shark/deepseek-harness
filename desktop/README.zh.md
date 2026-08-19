@@ -71,9 +71,13 @@ pnpm run desktop:package:linux
 
 渲染进程是 harness 自身服务的远程页面：WebView 完全没有 node 集成（系统 WebView 引擎），且导航被约束在 harness 源内——`on_navigation` 拒绝其他源、`on_new_window` 拒绝新窗口，两者都改由系统浏览器打开。
 
+## 自定义标题栏与窗口控制 IPC
+
+窗口是**无边框**的（`decorations(false)`）：GUI 的自定义标题栏（ui-layout 的 `TitleBar`）即拖拽区（`data-tauri-drag-region`），并拥有关闭/最大化/最小化控制，其样式与位置对齐打包平台的原生标准：**macOS 在顶部左侧显示红黄绿交通灯，Windows/Linux 在顶部右侧显示方形按钮**（由 user agent 判定）。为让远程页面调用 Tauri 窗口 API，开启了 `withGlobalTauri`，并新增 `window-controls` 能力（见 `src-tauri/capabilities/window-controls.json`），只授予 `core:window` 的最小化/最大化切换/关闭/开始拖拽/读取权限，且**严格限定**到 harness 源（`http://127.0.0.1:*`、`http://localhost:*`）的 `main` 窗口。通过该能力无法触达系统其它部分；`on_navigation`/`on_new_window` 约束不变。
+
 ## 已知限制与后续工作
 
 - 安装包未签名，也没有自动更新机制。
 - 解包后的 macOS 应用约 356 MB（运行时闭包约 233 MB、Node 二进制约 114 MB）；DMG 安装包会压缩负载。Node 二进制是上游完整构建，裁剪意味着维护自定义构建。
-- 窗口标题为产品名；没有托盘或后台行为——关闭窗口即停止服务。
+- 窗口标题为产品名（由自定义标题栏显示，并携带布局菜单）；没有托盘或后台行为——关闭窗口即停止服务。
 - 向壳进程本身（而非其退出路径）发送 SIGTERM 会留下仍在运行的服务器子进程：壳无法清理它未曾看到终止的信号。

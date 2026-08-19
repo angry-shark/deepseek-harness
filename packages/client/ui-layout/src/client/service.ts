@@ -27,8 +27,12 @@ export interface ILayout {
   openDetails(): void
   /** Close the details panel. */
   closeDetails(): void
+  /** Toggle the details panel (closed ⟷ contract default width). */
+  toggleDetails(): void
   /** Toggle the right workspace panel (closed ⟷ contract default width). */
   toggleRight(): void
+  /** Toggle the bottom workspace panel (closed ⟷ contract default height). */
+  toggleBottom(): void
 }
 
 /** Cross-plugin panel-action face (ctx.layout). */
@@ -61,9 +65,19 @@ export class LayoutController implements ILayout {
     this.#require().closeDetails()
   }
 
+  /** Toggle the details panel (closed ⟷ contract default width). */
+  toggleDetails(): void {
+    this.#require().toggleDetails()
+  }
+
   /** Toggle the right workspace panel (closed ⟷ contract default width). */
   toggleRight(): void {
     this.#require().toggleRight()
+  }
+
+  /** Toggle the bottom workspace panel (closed ⟷ contract default height). */
+  toggleBottom(): void {
+    this.#require().toggleBottom()
   }
 
   #require(): PanelActions {

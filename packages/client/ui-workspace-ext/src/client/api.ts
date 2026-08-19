@@ -66,6 +66,21 @@ export interface GitDiffResult {
   path?: string
 }
 
+/** Result of listing the branch's commit history. */
+export interface GitLogResult {
+  ok: boolean
+  error?: string
+  commits?: GitCommitInfo[]
+}
+
+/** One commit in the branch history. */
+export interface GitCommitInfo {
+  hash: string
+  date: string
+  author: string
+  message: string
+}
+
 async function getJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { headers: { accept: 'application/json' } })
   return response.json() as Promise<T>
@@ -95,6 +110,8 @@ export const api = {
     getJson(`/api/workspace-ext/status?path=${encodeURIComponent(path)}`),
   gitDiff: (path: string, file: string, staged: boolean): Promise<GitDiffResult> =>
     getJson(`/api/workspace-ext/diff?path=${encodeURIComponent(path)}&file=${encodeURIComponent(file)}&staged=${staged ? 1 : 0}`),
+  gitLog: (path: string): Promise<GitLogResult> =>
+    getJson(`/api/workspace-ext/git/log?path=${encodeURIComponent(path)}`),
   gitAction: (
     path: string,
     action: 'stage' | 'unstage' | 'discard' | 'commit',

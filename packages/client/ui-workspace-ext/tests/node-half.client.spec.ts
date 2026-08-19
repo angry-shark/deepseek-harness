@@ -155,6 +155,7 @@ describe('workspace-ext node half', () => {
       '/api/workspace-ext/checkout',
       '/api/workspace-ext/diff',
       '/api/workspace-ext/git/action',
+      '/api/workspace-ext/git/log',
       '/api/workspace-ext/status',
       '/api/workspace-ext/term/kill',
       '/api/workspace-ext/term/resize',
@@ -631,6 +632,36 @@ describe('workspace-ext node half', () => {
     const resNoFs = makeRes()
     await route.handler(makeReq('GET', '/api/workspace-ext/diff?path=%2Frepo&file=new.txt&staged=0'), resNoFs)
     expect(bodyOf(resNoFs).error).toBe('filesystem service unavailable')
+  })
+
+  it('serves the branch commit history through git log', async () => {
+    const { ctx, routes } = bench()
+    const subprocess = fakeSubprocess([
+      { exitCode: 0, out: 'a1b2c3d|2026-08-18|Lin|feat: add history\nb2c3d4e|2026-08-17|Lin|fix: typo\n' },
+    ])
+    ;(ctx as unknown as Record<string, unknown>)['svc:subprocess'] = subprocess
+    const route = byPath(routes, '/api/workspace-ext/git/log')
+    const res = makeRes()
+    await route.handler(makeReq('GET', '/api/workspace-ext/git/log?path=%2Frepo'), res)
+    const body = bodyOf(res)
+    expect(body.ok).toBe(true)
+    const argv = ((subprocess.spawn as ReturnType<typeof vi.fn>).mock.calls[0]![0] as { argv: string[] }).argv
+    expect(argv).toEqual(['/usr/bin/git', 'log', '--date=short', '--format=%h|%ad|%an|%s', '-n', '30'])
+    expect(body.commits).toEqual([
+      { hash: 'a1b2c3d', date: '2026-08-18', author: 'Lin', message: 'feat: add history' },
+      { hash: 'b2c3d4e', date: '2026-08-17', author: 'Lin', message: 'fix: typo' },
+    ])
+    // A failing log surfaces the error text.
+    ;(subprocess.spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() => ({
+      done: Promise.resolve({ exitCode: 128, signal: null }),
+      collected: {
+        stdout: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) },
+        stderr: { readFrom: () => ({ text: 'fatal: not a git repository', nextOffset: 0, lossy: false }) },
+      },
+    }))
+    const resErr = makeRes()
+    await route.handler(makeReq('GET', '/api/workspace-ext/git/log?path=%2Frepo'), resErr)
+    expect(bodyOf(resErr).error).toContain('fatal: not a git repository')
   })
 
   it('spawns, streams, writes, kills and reports the terminal', async () => {
